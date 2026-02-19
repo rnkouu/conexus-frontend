@@ -14,11 +14,20 @@ const app = express();
 // --- CONFIGURATION ---
 const PORT = process.env.PORT || 8000; 
 
+// --- Ensure uploads directory exists ---
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir);
+    console.log('📁 Created missing uploads folder');
+}
+
 // OJS API BRIDGE CONFIGURATION
 const OJS_CONFIG = {
     apiUrl: 'http://127.0.0.1:8080/index.php/crj/api/v1/submissions',
     apiKey: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.WyIwMTQ3NzQ3ZTNhODAyNTJiYjA3Y2ZkNDBlZmRkMmY1ZmVkYzY0YjhhIl0.krPm4K0lgwJReWfN_xwNzOrqsXR_gKIwXsSAWmYNmZM'
 };
+
+
 
 // --- Updated CORS block for your backend server.js ---
 app.use(cors({
@@ -36,7 +45,7 @@ app.use(bodyParser.json());
 
 // --- CLOUD & FILE HANDLING ---
 app.use(express.static(path.join(__dirname, '.')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(uploadDir));
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
