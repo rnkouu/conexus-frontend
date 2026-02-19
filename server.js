@@ -20,15 +20,18 @@ const OJS_CONFIG = {
     apiKey: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.WyIwMTQ3NzQ3ZTNhODAyNTJiYjA3Y2ZkNDBlZmRkMmY1ZmVkYzY0YjhhIl0.krPm4K0lgwJReWfN_xwNzOrqsXR_gKIwXsSAWmYNmZM'
 };
 
+// --- Updated CORS block for your backend server.js ---
 app.use(cors({
     origin: [
-        'https://conexus-frontend-chi.vercel.app', // Your specific Vercel URL
-        'http://localhost:3000',                  // For local testing
-        'http://127.0.0.1:5500'                   // For Live Server testing
+        'https://conexus-frontend-chi.vercel.app', // Your live Vercel URL
+        'http://localhost:3000'
     ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // OPTIONS is vital for login
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'] 
 }));
+
+
 app.use(bodyParser.json());
 
 // --- CLOUD & FILE HANDLING ---
