@@ -32,10 +32,11 @@ const OJS_CONFIG = {
 // --- Updated CORS block for your backend server.js ---
 app.use(cors({
     origin: [
-        'https://conexus-frontend-chi.vercel.app', // Your live Vercel URL
+        'https://cconexus.vercel.app',    // Removed the trailing slash
+        'https://conexus-frontend-chi.vercel.app', // Your other Vercel domain
         'http://localhost:3000'
     ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // OPTIONS is vital for login
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'] 
 }));
