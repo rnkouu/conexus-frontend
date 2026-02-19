@@ -12,8 +12,8 @@
   // ==========================================
   // CONFIGURATION
   // ==========================================
-  const API_BASE = "http://localhost:8000/api";
-  const EMAIL_API = "http://localhost:8000/api";
+  const API_BASE = "https://conexus-backend-production.up.railway.app/api";
+  const EMAIL_API = "https://conexus-backend-production.up.railway.app/api";
   
   // Your Local OJS Dashboard URL
   const OJS_DASHBOARD_URL = "http://localhost:8080/index.php/crj/dashboard/editorial#submissions";
@@ -283,7 +283,7 @@
   function RegistrationPreviewModal({ reg, onClose }) {
     if (!reg) return null;
     const companionList = Array.isArray(reg.companions) ? reg.companions : (typeof reg.companions === 'string' ? JSON.parse(reg.companions) : []);
-    const fileUrl = reg.validId ? `http://localhost:8000/${reg.validId}` : null;
+    const fileUrl = reg.validId ? `https://conexus-backend-production.up.railway.app/${reg.validId}` : null;
 
     return (
       <ModalWrapper onClose={onClose}>

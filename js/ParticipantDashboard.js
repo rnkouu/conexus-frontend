@@ -145,8 +145,8 @@
     if (!reg) return null;
     
     // Construct image URL assuming backend is on port 8000
-    const fileUrl = reg.validId ? `http://localhost:8000/${reg.validId}` : null;
-    const companions = Array.isArray(reg.companions) ? reg.companions : [];
+const fileUrl = reg.validId ? `https://conexus-backend-production.up.railway.app/${reg.validId}` : null;
+const companions = Array.isArray(reg.companions) ? reg.companions : [];
 
     return (
       <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 overflow-y-auto" onClick={onClose}>
@@ -362,7 +362,7 @@
           if (selectedFile) payload.append('valid_id', selectedFile); 
           payload.append('companions', JSON.stringify(companions)); 
 
-          const response = await fetch('http://localhost:8000/api/register', {
+          const response = await fetch('https://conexus-backend-production.up.railway.app/api/register', {
               method: 'POST',
               body: payload, 
           });

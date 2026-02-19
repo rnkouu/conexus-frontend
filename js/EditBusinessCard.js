@@ -141,7 +141,7 @@ function EditBusinessCard({ user, onUpdateUser }) {
     e.preventDefault();
     setIsSaving(true);
     try {
-        const response = await fetch('http://localhost:8000/api/users/profile', {
+        const response = await fetch('https://conexus-backend-production.up.railway.app/api/users/profile', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 

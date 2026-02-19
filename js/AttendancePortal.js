@@ -67,7 +67,7 @@
         try {
             // IMPORTANT: Use localhost for testing, change to Railway URL for production
             // const API_URL = 'https://conexus-backend-production.up.railway.app/api/attendance/scan';
-            const API_URL = 'http://localhost:8000/api/attendance/scan'; 
+            const API_URL = 'https://conexus-backend-production.up.railway.app/api/attendance/scan';
 
             const res = await fetch(API_URL, {
                 method: 'POST',
