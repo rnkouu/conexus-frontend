@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path'); 
 const mysql = require('mysql2');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -9,15 +10,23 @@ const FormData = require('form-data');
 const fs = require('fs');
 
 const app = express();
-const PORT = 8000;
+
+// --- CONFIGURATION ---
+const PORT = process.env.PORT || 8000; 
+
+// OJS API BRIDGE CONFIGURATION
+const OJS_CONFIG = {
+    apiUrl: 'http://127.0.0.1:8080/index.php/crj/api/v1/submissions',
+    apiKey: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.WyIwMTQ3NzQ3ZTNhODAyNTJiYjA3Y2ZkNDBlZmRkMmY1ZmVkYzY0YjhhIl0.krPm4K0lgwJReWfN_xwNzOrqsXR_gKIwXsSAWmYNmZM'
+};
 
 app.use(cors());
 app.use(bodyParser.json());
 
-// Serve the uploads folder so admins can download the PDFs later
-app.use('/uploads', express.static('uploads'));
+// --- CLOUD & FILE HANDLING ---
+app.use(express.static(path.join(__dirname, '.')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Configure Multer to save files with their original names
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, 'uploads/')
@@ -27,9 +36,9 @@ const storage = multer.diskStorage({
     }
 });
 
-
 const upload = multer({ storage: storage });
-// Database Connection
+
+// --- DATABASE CONNECTION ---
 const db = mysql.createConnection({
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
@@ -45,16 +54,12 @@ db.connect((err) => {
 
 // --- AUTHENTICATION ---
 
-// Register User (Plain Text Password)
 app.post('/api/register_user', (req, res) => {
     const { name, email, password, university } = req.body;
-    
-    // 1. Check if email exists
     db.query("SELECT id FROM users WHERE email = ?", [email], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         if (results.length > 0) return res.json({ success: false, message: 'Email taken' });
 
-        // 2. Insert User (Storing password directly)
         db.query("INSERT INTO users (full_name, email, password, university_org, role) VALUES (?, ?, ?, ?, 'participant')", 
         [name, email, password, university], (err, result) => {
             if (err) return res.status(500).json({ error: err.message });
@@ -63,16 +68,12 @@ app.post('/api/register_user', (req, res) => {
     });
 });
 
-// Login User (Plain Text Comparison)
-// Login User (Now including business card fields)
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     db.query("SELECT * FROM users WHERE email = ?", [email], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
-        
         if (results.length > 0) {
             const user = results[0];
-            
             if (password === user.password) {
                 res.json({ 
                     success: true, 
@@ -82,12 +83,15 @@ app.post('/api/login', (req, res) => {
                         email: user.email, 
                         role: user.role, 
                         university: user.university_org,
-                        // NEW: These fields ensure data persists on reload
                         job_title: user.job_title,
+                        designation: user.designation, // ADD THIS
+                        phone: user.phone,             // ADD THIS
                         university_org: user.university_org,
                         bio: user.bio,
                         skills: user.skills,
-                        linkedin_url: user.linkedin_url
+                        linkedin_url: user.linkedin_url,
+                        facebook_url: user.facebook_url, // ADD THIS
+                        twitter_url: user.twitter_url    // ADD THIS
                     } 
                 });
             } else {
@@ -118,8 +122,16 @@ app.post('/api/create_event', (req, res) => {
 });
 
 app.delete('/api/delete_event/:id', (req, res) => {
-    // Cascade handles deleting registrations
     db.query("DELETE FROM events WHERE id = ?", [req.params.id], (err) => {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({ success: true });
+    });
+});
+
+app.put('/api/events/:id', (req, res) => {
+    const { title, description, location, startDate, endDate, featured, type, mode } = req.body;
+    const sql = "UPDATE events SET title=?, description=?, location=?, start_date=?, end_date=?, featured=?, type=?, mode=? WHERE id=?";
+    db.query(sql, [title, description, location, startDate, endDate, featured?1:0, type, mode, req.params.id], (err) => {
         if(err) return res.status(500).json({error: err.message});
         res.json({ success: true });
     });
@@ -128,7 +140,6 @@ app.delete('/api/delete_event/:id', (req, res) => {
 // --- REGISTRATIONS ---
 
 app.get('/api/registrations', (req, res) => {
-    // Improved Query: JSON_ARRAYAGG handles companions correctly
     const sql = `
         SELECT r.*, u.full_name, u.email as user_email, u.university_org as university, e.title as event_title, r.room_id,
         (SELECT JSON_ARRAYAGG(JSON_OBJECT(
@@ -152,43 +163,51 @@ app.get('/api/registrations', (req, res) => {
     });
 });
 
-// Register with Transaction
-app.post('/api/register', (req, res) => {
-    const { user_email, event_id, companions } = req.body;
+// --- REGISTRATIONS (UPDATED WITH FILE UPLOAD) ---
 
-    // Start Transaction
+// 1. Add 'upload.single' middleware to handle the image
+app.post('/api/register', upload.single('valid_id'), (req, res) => {
+    // 2. Destructure body data
+    let { user_email, event_id, companions } = req.body;
+    
+    // 3. Get the file path if uploaded
+    const valid_id_path = req.file ? req.file.path : null;
+
+    // 4. Important: When using FormData (required for file uploads), 
+    // nested objects/arrays like 'companions' arrive as JSON strings.
+    if (typeof companions === 'string') {
+        try {
+            companions = JSON.parse(companions);
+        } catch (e) {
+            companions = [];
+        }
+    }
+
     db.beginTransaction((err) => {
         if (err) return res.status(500).json({ error: err.message });
 
-        // 1. Get User ID
         db.query("SELECT id FROM users WHERE email = ?", [user_email], (err, users) => {
             if (err || users.length === 0) {
                 return db.rollback(() => res.status(404).json({ message: 'User not found' }));
             }
 
-            // 2. Insert Registration
-            const sqlReg = "INSERT INTO registrations (user_id, event_id, status, created_at) VALUES (?, ?, 'For approval', NOW())";
-            db.query(sqlReg, [users[0].id, event_id], (err, result) => {
-                if (err) {
-                    return db.rollback(() => res.status(500).json({ error: err.message }));
-                }
-
+            // 5. Update SQL to insert 'valid_id_path'
+            const sqlReg = "INSERT INTO registrations (user_id, event_id, status, valid_id_path, created_at) VALUES (?, ?, 'For approval', ?, NOW())";
+            
+            db.query(sqlReg, [users[0].id, event_id, valid_id_path], (err, result) => {
+                if (err) return db.rollback(() => res.status(500).json({ error: err.message }));
+                
                 const regId = result.insertId;
 
-                // 3. Insert Companions (if any)
                 if (companions && Array.isArray(companions) && companions.length > 0) {
                     const compSql = "INSERT INTO registration_companions (registration_id, name, relation, phone, email) VALUES ?";
                     const values = companions.map(c => [regId, c.name, c.relation, c.phone, c.email]);
-
+                    
                     db.query(compSql, [values], (err) => {
-                        if (err) {
-                            return db.rollback(() => res.status(500).json({ error: "Companion insert failed" }));
-                        }
-                        // Commit Transaction
+                        if (err) return db.rollback(() => res.status(500).json({ error: "Companion insert failed" }));
                         db.commit(() => res.json({ success: true, regId }));
                     });
                 } else {
-                    // Commit Transaction (No companions)
                     db.commit(() => res.json({ success: true, regId }));
                 }
             });
@@ -196,16 +215,28 @@ app.post('/api/register', (req, res) => {
     });
 });
 
+// In server.js (Replace the existing PUT /api/registrations/:id)
 app.put('/api/registrations/:id', (req, res) => {
-    const { status, room_id } = req.body;
-    let sql = "UPDATE registrations SET status = ? WHERE id = ?";
-    let params = [status, req.params.id];
+    const { status, room_id, admin_note } = req.body;
     
+    // Base Query
+    let sql = "UPDATE registrations SET status = ?";
+    let params = [status];
+
+    // Conditionally add fields to query
     if (room_id !== undefined) {
-        sql = "UPDATE registrations SET status = ?, room_id = ? WHERE id = ?";
-        params = [status, room_id, req.params.id];
+        sql += ", room_id = ?";
+        params.push(room_id);
     }
     
+    if (admin_note !== undefined) {
+        sql += ", admin_note = ?";
+        params.push(admin_note);
+    }
+
+    sql += " WHERE id = ?";
+    params.push(req.params.id);
+
     db.query(sql, params, (err) => {
         if(err) return res.status(500).json({error: err.message});
         res.json({ success: true });
@@ -245,7 +276,6 @@ app.post('/api/dorms', (req, res) => {
 });
 
 app.delete('/api/dorms/:id', (req, res) => {
-    // ON DELETE CASCADE in DB handles rooms and room_id updates
     db.query("DELETE FROM dorms WHERE id = ?", [req.params.id], (err) => {
         if(err) return res.status(500).json({error: err.message});
         res.json({ success: true });
@@ -265,7 +295,6 @@ app.post('/api/rooms', (req, res) => {
 });
 
 app.delete('/api/rooms/:id', (req, res) => {
-    // ON DELETE SET NULL in DB handles registration updates
     db.query("DELETE FROM rooms WHERE id = ?", [req.params.id], (err) => {
         if(err) return res.status(500).json({error: err.message});
         res.json({ success: true });
@@ -301,23 +330,15 @@ app.delete('/api/portals/:id', (req, res) => {
 
 app.post('/api/attendance/scan', (req, res) => {
     const { portal_id, input_code } = req.body;
-    
     db.query("SELECT name FROM attendance_portals WHERE id = ?", [portal_id], (err, portals) => {
         const roomName = portals[0]?.name || "Unknown";
-        
-        // Find registration by NFC or Email
         const sql = "SELECT r.id, r.status, u.full_name FROM registrations r JOIN users u ON r.user_id = u.id WHERE (r.nfc_card_id = ? OR u.email = ?) LIMIT 1";
-        
         db.query(sql, [input_code, input_code], (err, results) => {
             if(results.length === 0) return res.json({success: false, status: 'not_found'});
-            
             const reg = results[0];
             if(reg.status !== 'Approved') return res.json({success: false, status: 'not_approved', name: reg.full_name});
-            
-            // Check for duplicate scans (within 5 mins)
             db.query("SELECT id FROM attendance_logs WHERE registration_id = ? AND scanned_at > (NOW() - INTERVAL 5 MINUTE)", [reg.id], (err, dups) => {
                 if(dups.length > 0) return res.json({success: false, status: 'repeat', name: reg.full_name});
-                
                 db.query("INSERT INTO attendance_logs (portal_id, room_name, registration_id, scanned_at) VALUES (?, ?, ?, NOW())", [portal_id, roomName, reg.id], () => {
                     res.json({success: true, status: 'success', name: reg.full_name});
                 });
@@ -328,10 +349,7 @@ app.post('/api/attendance/scan', (req, res) => {
 
 app.get('/api/attendance_logs', (req, res) => {
     const sql = `
-        SELECT 
-            al.id, al.scanned_at, al.room_name, 
-            COALESCE(u.full_name, 'Unknown User') as participant_name, 
-            COALESCE(e.title, 'Unknown Event') as event_title 
+        SELECT al.id, al.scanned_at, al.room_name, COALESCE(u.full_name, 'Unknown User') as participant_name, COALESCE(e.title, 'Unknown Event') as event_title 
         FROM attendance_logs al 
         LEFT JOIN registrations r ON al.registration_id = r.id 
         LEFT JOIN users u ON r.user_id = u.id 
@@ -344,66 +362,63 @@ app.get('/api/attendance_logs', (req, res) => {
     });
 });
 
-// --- SUBMISSIONS ---
-
-// --- SUBMISSIONS & OJS API BRIDGE ---
+// --- SUBMISSIONS & OJS API BRIDGE (FIXED) ---
 app.post('/api/submissions', upload.single('file'), (req, res) => {
-    // 1. Extract data and file from the FormData structure
     const { user_email, event_id, title, abstract } = req.body;
     const file = req.file;
 
     if (!file) return res.status(400).json({ success: false, message: 'No file uploaded' });
 
     const file_name = file.originalname;
-    const file_path = file.path; // e.g., 'uploads/12345-paper.pdf'
+    const file_path = file.path;
 
-    // 2. Save local backup to Conexus MySQL Database
+    // 1. ALWAYS SAVE TO MYSQL FIRST
     const sql = "INSERT INTO paper_submissions (user_email, event_id, title, abstract, file_name, file_path, status) VALUES (?, ?, ?, ?, ?, ?, 'under_review')";
     
     db.query(sql, [user_email, event_id || null, title, abstract, file_name, file_path], async (err, result) => {
-        if(err) return res.status(500).json({error: err.message});
+        if(err) {
+            console.error("❌ MySQL Error:", err.message);
+            return res.status(500).json({ success: false, error: err.message });
+        }
         
         const insertId = result.insertId;
 
-        // 3. The OJS API Bridge (Forwarding to external OJS server)
+        // 2. BRIDGE TO OJS
         try {
-            // TODO: Replace these with the actual details provided by the OJS Administrator later
-            const OJS_API_URL = "https://your-institution-ojs-site.com/index.php/journal/api/v1/submissions"; 
-            const OJS_API_KEY = "YOUR_OJS_API_KEY_HERE";
-
-            // Package it for OJS
-            const ojsFormData = new FormData();
-            ojsFormData.append('title', title);
-            ojsFormData.append('abstract', abstract);
-            ojsFormData.append('authorEmail', user_email);
-            ojsFormData.append('file', fs.createReadStream(file.path), file_name);
-
-            /* * UNCOMMENT THIS BLOCK once you have the real OJS_API_URL and OJS_API_KEY
-             *
-            await axios.post(OJS_API_URL, ojsFormData, {
+            console.log("📥 MySQL save successful. Syncing to OJS...");
+            
+            const ojsUrlWithToken = `${OJS_CONFIG.apiUrl}?apiToken=${OJS_CONFIG.apiKey}`;
+            
+            const ojsResponse = await axios.post(ojsUrlWithToken, {
+                locale: 'en_US', 
+                sectionId: 1,    
+                title: { en_US: title || "Untitled Submission" },
+                abstract: { en_US: abstract || "No abstract provided." }
+            }, {
                 headers: {
-                    ...ojsFormData.getHeaders(),
-                    'Authorization': `Bearer ${OJS_API_KEY}`
+                    'Content-Type': 'application/json'
                 }
             });
-            */
             
-            console.log(`✅ Paper saved locally and queued for OJS: ${title}`);
-            res.json({ success: true, id: insertId, message: 'Saved locally and queued for OJS' });
+            console.log("✅ OJS Sync successful! ID:", ojsResponse.data.id);
+            return res.json({ success: true, id: insertId, ojsId: ojsResponse.data.id, message: 'Saved and synced.' });
+
         } catch (ojsError) {
-            console.error("❌ OJS API Error:", ojsError.message);
-            // Even if OJS rejects it, we return success because the local Conexus backup was saved
-            res.json({ success: true, id: insertId, message: 'Saved locally, but OJS bridge failed.' });
+            console.error("❌ OJS REJECTED THE PAYLOAD:");
+            console.error(JSON.stringify(ojsError.response?.data, null, 2) || ojsError.message);
+            
+            return res.status(500).json({ 
+                success: false, 
+                message: "Saved to MySQL, but OJS rejected it." 
+            });
         }
-    });
-});
+    }); 
+}); 
 
 app.get('/api/submissions', (req, res) => {
     const { email } = req.query;
-    // Join with events to get the title for the admin view
     const sql = `
-        SELECT s.*, e.title as event_title 
-        FROM paper_submissions s
+        SELECT s.*, e.title as event_title FROM paper_submissions s
         LEFT JOIN events e ON s.event_id = e.id
         ${email ? " WHERE s.user_email = ?" : ""}
         ORDER BY s.created_at DESC
@@ -414,7 +429,6 @@ app.get('/api/submissions', (req, res) => {
     });
 });
 
-// ADD THIS: Route to update submission status (Accept/Reject/Under Review)
 app.put('/api/submissions/:id/status', (req, res) => {
     const { status } = req.body;
     db.query("UPDATE paper_submissions SET status = ? WHERE id = ?", [status, req.params.id], (err) => {
@@ -423,55 +437,73 @@ app.put('/api/submissions/:id/status', (req, res) => {
     });
 });
 
-/* ==========================================
-   NFC DIGITAL BUSINESS CARD ROUTE
-   ========================================= */
+// --- NFC BUSINESS CARD ---
+
 app.get('/api/users/nfc/:profile_slug', (req, res) => {
-  const profileSlug = req.params.profile_slug;
-
-  // Query the database for the user matching this specific slug
-  const query = `
-    SELECT full_name, job_title, university_org, bio, skills, linkedin_url, email 
-    FROM users 
-    WHERE profile_slug = ?
-  `;
-
-  db.query(query, [profileSlug], (err, results) => {
-    if (err) {
-      console.error("Database error fetching NFC profile:", err);
-      return res.status(500).json({ success: false, message: "Database error" });
-    }
-
-    if (results.length > 0) {
-      // Success! We found the user, send their data to the React frontend
-      res.json({ success: true, user: results[0] });
-    } else {
-      // The slug doesn't exist or the card is inactive
-      res.status(404).json({ success: false, message: "Profile not found" });
-    }
-  });
+    const query = "SELECT full_name, job_title, designation, university_org, bio, linkedin_url, facebook_url, twitter_url, phone, email FROM users WHERE profile_slug = ?";
+    db.query(query, [req.params.profile_slug], (err, results) => {
+        if (err) return res.status(500).json({ success: false });
+        if (results.length > 0) res.json({ success: true, user: results[0] });
+        else res.status(404).json({ success: false });
+    });
 });
 
-/* ==========================================
-   UPDATE USER BUSINESS CARD PROFILE
-   ========================================= */
 app.put('/api/users/profile', (req, res) => {
-  const { email, job_title, university_org, bio, skills, linkedin_url } = req.body;
+    const { 
+        email, 
+        name,           
+        job_title, 
+        designation,    
+        university_org, 
+        phone,          
+        bio, 
+        skills, 
+        linkedin_url, 
+        facebook_url,   
+        twitter_url     
+    } = req.body;
 
-  const query = `
-    UPDATE users 
-    SET job_title = ?, university_org = ?, bio = ?, skills = ?, linkedin_url = ?
-    WHERE email = ?
-  `;
+    const query = `
+        UPDATE users 
+        SET full_name = ?, 
+            job_title = ?, 
+            designation = ?, 
+            university_org = ?, 
+            phone = ?, 
+            bio = ?, 
+            skills = ?, 
+            linkedin_url = ?, 
+            facebook_url = ?, 
+            twitter_url = ? 
+        WHERE email = ?`;
 
-  db.query(query, [job_title, university_org, bio, skills, linkedin_url, email], (err, result) => {
-    if (err) {
-      console.error("Error updating profile:", err);
-      return res.status(500).json({ success: false, message: "Database error" });
-    }
-    res.json({ success: true, message: "Business card updated successfully!" });
-  });
+    db.query(query, [
+        name, 
+        job_title, 
+        designation, 
+        university_org, 
+        phone, 
+        bio, 
+        skills, 
+        linkedin_url, 
+        facebook_url, 
+        twitter_url, 
+        email
+    ], (err) => {
+        if (err) {
+            console.error("❌ Profile Update Error:", err.message);
+            return res.status(500).json({ success: false });
+        }
+        res.json({ success: true });
+    });
 });
 
+//CERTIFICATE
+app.put('/api/registrations/:id/mark-certificate', (req, res) => {
+    db.query("UPDATE registrations SET certificate_issued_at = NOW() WHERE id = ?", [req.params.id], (err) => {
+        if(err) return res.status(500).json({error: err.message});
+        res.json({ success: true });
+    });
+});
 
-app.listen(PORT, () => console.log(`🚀 DATABASE Server is now running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🚀 DATABASE Server is now running on Port ${PORT}`));

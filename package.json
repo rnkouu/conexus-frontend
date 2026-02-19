@@ -1,9 +1,11 @@
 {
   "name": "conexus",
   "version": "1.0.0",
-  "description": "",
-  "main": "attendance-portal.js",
+  "description": "Conexus Event Management Portal",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
+    "frontend": "npx serve -s .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

@@ -5,7 +5,7 @@
 ; Database Configuration
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 [database]
-driver = pgsql
+driver = postgres
 host = db
 username = ojs_user
 password = ojs_password_change_me
@@ -37,11 +37,13 @@ force_ssl = Off
 force_ssl_login = Off
 allowed_hosts[] = localhost:8080
 allowed_hosts[] = 127.0.0.1:8080
+api_key_secret = "conexus_research_2026"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Email Configuration
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 [email]
+default = sendmail
 smtp = On
 smtp_server = mail
 smtp_port = 25

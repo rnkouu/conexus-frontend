@@ -15,8 +15,12 @@
   function AuthPage({ onBack, onLogin, onRegister }) {
     const [isLogin, setIsLogin] = useState(true);
     const [loading, setLoading] = useState(false);
+    
+    // Updated state to handle separate name fields
     const [formData, setFormData] = useState({
-      name: "",
+      firstName: "",
+      middleInitial: "",
+      lastName: "",
       email: "",
       password: "",
       university: "",
@@ -32,21 +36,37 @@
 
       // Basic validation
       if (!formData.email || !formData.password) {
-        alert("Please fill in all fields.");
+        alert("Please fill in email and password.");
         setLoading(false);
         return;
       }
 
       if (isLogin) {
-        const res = await onLogin(formData);
+        const res = await onLogin({
+            email: formData.email,
+            password: formData.password
+        });
         if (!res.ok) alert(res.message || "Login failed");
       } else {
-        if (!formData.name) {
-          alert("Name is required");
+        // Registration Validation
+        if (!formData.firstName || !formData.lastName) {
+          alert("First Name and Last Name are required");
           setLoading(false);
           return;
         }
-        await onRegister(formData);
+
+        // Logic: Combine parts into one "name" string for the backend
+        // Format: "John M. Doe" or "John Doe"
+        const mi = formData.middleInitial ? `${formData.middleInitial.toUpperCase()}.` : "";
+        const fullName = `${formData.firstName} ${mi} ${formData.lastName}`.replace(/\s+/g, " ").trim();
+
+        // Send constructed payload
+        await onRegister({
+            name: fullName, // Backend expects 'name'
+            email: formData.email,
+            password: formData.password,
+            university: formData.university
+        });
       }
       setLoading(false);
     };
@@ -64,7 +84,7 @@
             <span>Back to landing</span>
           </button>
 
-          {/* Small title (kept minimal to match the reference design) */}
+          {/* Title */}
           <div className="mb-4">
             <div className="text-base sm:text-lg font-semibold text-gray-900">
               {isLogin ? "Welcome back" : "Create your account"}
@@ -76,7 +96,7 @@
             </div>
           </div>
 
-          {/* Login / Register toggle aligned left */}
+          {/* Login / Register toggle */}
           <div className="flex items-center justify-start mb-4">
             <div className="inline-flex rounded-full bg-soft border border-gray-200 p-0.5 text-[11px]">
               <button
@@ -110,23 +130,55 @@
           <form onSubmit={handleSubmit} className="space-y-3 text-sm">
             {!isLogin && (
               <>
+                {/* Row 1: First Name & Middle Initial */}
+                <div className="flex gap-3">
+                    <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                            First Name
+                        </label>
+                        <input
+                            name="firstName"
+                            type="text"
+                            placeholder="Juan"
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 bg-white"
+                            value={formData.firstName}
+                            onChange={handleChange}
+                        />
+                    </div>
+                    <div className="w-16">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                            M.I.
+                        </label>
+                        <input
+                            name="middleInitial"
+                            type="text"
+                            placeholder="D"
+                            maxLength={1}
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 bg-white text-center uppercase"
+                            value={formData.middleInitial}
+                            onChange={handleChange}
+                        />
+                    </div>
+                </div>
+
+                {/* Row 2: Last Name */}
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Full name
+                    Last Name
                   </label>
                   <input
-                    name="name"
+                    name="lastName"
                     type="text"
-                    placeholder="Your name"
+                    placeholder="Dela Cruz"
                     className="w-full rounded-lg border border-gray-200 px-3 py-2 bg-white"
-                    value={formData.name}
+                    value={formData.lastName}
                     onChange={handleChange}
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    University / organization
+                    University / Organization
                   </label>
                   <input
                     name="university"
@@ -171,7 +223,7 @@
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 w-full px-4 py-2.5 rounded-xl grad-btn text-white text-sm font-semibold shadow-card disabled:opacity-70 disabled:cursor-not-allowed"
+              className="mt-4 w-full px-4 py-2.5 rounded-xl grad-btn text-white text-sm font-semibold shadow-card disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {loading
                 ? "Processing…"

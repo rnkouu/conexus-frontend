@@ -9,15 +9,12 @@ services:
       - "8080:80"
     environment:
       - SERVERNAME=localhost:8080
-      - DATACITE_API_URL=https://mds.datacite.org
-      - DATACITE_API_AUTH_URL=https://api.datacite.org
       - OJS_DB_DRIVER=pgsql
       - OJS_DB_HOST=db
       - OJS_DB_USERNAME=ojs_user
       - OJS_DB_PASSWORD=ojs_password_change_me
       - OJS_DB_NAME=ojs_db
-    volumes:
-      - ./ojs-files:/var/www/html
+      - OJS_CONFIG_SECURITY_API_KEY_SECRET=conexus_secret_key_2026 # <--- ADD THIS
     depends_on:
       - db
     networks:
@@ -26,7 +23,7 @@ services:
 
   # PostgreSQL Database (recommended for OJS)
   db:
-    image: postgres:15-alpine
+    image: postgres:15
     container_name: ojs-postgres
     environment:
       - POSTGRES_DB=ojs_db
@@ -38,7 +35,8 @@ services:
       - conexus-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ojs_user"]
+      # FIX: Added '-d ojs_db' so it checks the correct database
+      test: ["CMD-SHELL", "pg_isready -U ojs_user -d ojs_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -58,13 +56,6 @@ services:
     networks:
       - conexus-network
     restart: unless-stopped
-
-volumes:
-  # Removed - using bind mounts instead for folder storage
-  # ojs-data:
-  #   driver: local
-  # db-data:
-  #   driver: local
 
 networks:
   conexus-network:

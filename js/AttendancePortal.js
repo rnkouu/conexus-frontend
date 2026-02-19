@@ -8,21 +8,6 @@
     return params.get(name);
   }
 
-  function formatDateRange(start, end) {
-    if (!start && !end) return "";
-    try {
-      const s = start ? new Date(start) : null;
-      const e = end ? new Date(end) : null;
-      if (s && e) {
-        const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear();
-        const opts = { month: "short", day: "numeric" };
-        const sPart = s.toLocaleDateString(undefined, opts);
-        return sPart + " – " + e.getDate() + ", " + s.getFullYear();
-      }
-      return (s || e).toLocaleDateString();
-    } catch { return ""; }
-  }
-
   function statusLabel(status) {
     if (status === "success") return "CHECK-IN RECORDED";
     if (status === "repeat") return "ALREADY CHECKED IN";
@@ -42,9 +27,13 @@
     const [scanInput, setScanInput] = useState("");
     const [lastResult, setLastResult] = useState(null);
     const [portalData, setPortalData] = useState(null);
+    
+    // 1. NEW: Loading state for instant feedback
+    const [isScanning, setIsScanning] = useState(false);
+    
     const inputRef = useRef(null);
 
-    // Load Context from LocalStorage (Passed from Admin Dashboard)
+    // Load Context from LocalStorage
     useEffect(() => {
         const portalId = getQueryParam("portal");
         if (portalId) {
@@ -52,6 +41,16 @@
             if (raw) setPortalData(JSON.parse(raw));
         }
         if (inputRef.current) inputRef.current.focus();
+    }, []);
+
+    // Keep focus on input so you can scan repeatedly
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (inputRef.current && document.activeElement !== inputRef.current) {
+                inputRef.current.focus();
+            }
+        }, 2000);
+        return () => clearInterval(interval);
     }, []);
 
     // Handle Scan
@@ -62,9 +61,15 @@
 
         const portalId = getQueryParam("portal");
 
+        // 2. NEW: Immediate Feedback
+        setIsScanning(true); 
+        
         try {
-            // Send Scan to Node.js Server
-            const res = await fetch('http://localhost:8000/api/attendance/scan', {
+            // IMPORTANT: Use localhost for testing, change to Railway URL for production
+            // const API_URL = 'https://conexus-backend-production.up.railway.app/api/attendance/scan';
+            const API_URL = 'http://localhost:8000/api/attendance/scan'; 
+
+            const res = await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -84,9 +89,8 @@
                     time: new Date().toLocaleTimeString()
                 });
             } else {
-                // Handle Errors (Not found, Not approved, Repeat)
                 setLastResult({
-                    status: data.status || 'not_found', // 'not_found', 'not_approved', 'repeat'
+                    status: data.status || 'not_found', 
                     displayName: data.name || "Unknown",
                     code: code,
                     time: new Date().toLocaleTimeString()
@@ -96,14 +100,16 @@
         } catch (err) {
             console.error("Scan Error:", err);
             alert("Network Error: Is the server running?");
+        } finally {
+            // 3. Reset UI
+            setIsScanning(false);
+            setScanInput(""); 
+            if(inputRef.current) inputRef.current.focus();
         }
-
-        setScanInput(""); // Clear for next scan
     }
 
-    // Safety check if data is missing
     if (!portalData) {
-        return <div className="text-white text-center p-10">Loading Portal Data...</div>;
+        return <div className="text-white text-center p-10 font-mono animate-pulse">Initializing Portal...</div>;
     }
 
     const { portal, event } = portalData;
@@ -120,11 +126,8 @@
               </span>
             </h2>
             <p className="text-sm text-white/70 mt-1">{event.title}</p>
-            <p className="text-[11px] text-white/55 mt-2 max-w-2xl">
-              Keep this window focused. Scan an NFC card to check in automatically.
-            </p>
           </div>
-          <button onClick={() => window.close()} className="text-xs px-3 py-1.5 rounded-full bg-white/10 border border-white/15 text-white/85">Close</button>
+          <button onClick={() => window.close()} className="text-xs px-3 py-1.5 rounded-full bg-white/10 border border-white/15 text-white/85 hover:bg-white/20 transition">Close</button>
         </div>
 
         {/* Scanner Card */}
@@ -142,21 +145,34 @@
                   ref={inputRef}
                   value={scanInput}
                   onChange={(e) => setScanInput(e.target.value)}
-                  className="flex-1 rounded-2xl bg-white/5 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-accent2/70 focus:ring-2 focus:ring-accent2/20"
+                  className="flex-1 rounded-2xl bg-white/5 border border-white/15 px-4 py-3 text-sm text-white placeholder:text-white/35 focus:outline-none focus:border-accent2/70 focus:ring-2 focus:ring-accent2/20 transition-all"
                   placeholder="Ready to scan..."
                   autoFocus
                   autoComplete="off"
+                  disabled={isScanning} // Disable input while processing
                 />
-                <button type="submit" className="px-5 py-3 rounded-2xl grad-btn text-white text-xs font-semibold border border-white/10 hover:opacity-95">Check In</button>
+                <button type="submit" disabled={isScanning} className="px-5 py-3 rounded-2xl grad-btn text-white text-xs font-semibold border border-white/10 hover:opacity-95 disabled:opacity-50">
+                    {isScanning ? "..." : "Check In"}
+                </button>
               </div>
             </form>
 
-            {/* Result Display */}
-            <div className="rounded-2xl border border-white/12 bg-brand/30 p-6 md:p-8 min-h-[210px] flex items-center justify-center">
-              {lastResult ? (
-                <div className="w-full max-w-2xl text-center space-y-3">
+            {/* Result Display Area */}
+            <div className="rounded-2xl border border-white/12 bg-brand/30 p-6 md:p-8 min-h-[210px] flex items-center justify-center transition-all duration-300">
+              
+              {/* STATE 1: PROCESSING */}
+              {isScanning ? (
+                  <div className="text-center space-y-3 animate-pulse">
+                      <div className="w-16 h-16 mx-auto border-4 border-accent2 border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-lg font-bold text-accent2">Verifying...</p>
+                  </div>
+              ) : 
+              
+              /* STATE 2: SHOW RESULT */
+              lastResult ? (
+                <div className="w-full max-w-2xl text-center space-y-3 animate-fade-in-up">
                   {lastResult.status === "success" && (
-                    <div className="check-wrapper mx-auto"><div className="check-icon">✓</div></div>
+                    <div className="check-wrapper mx-auto mb-4"><div className="check-icon">✓</div></div>
                   )}
                   
                   <div className={"inline-flex items-center justify-center px-3 py-1.5 rounded-full text-[11px] font-medium uppercase tracking-[0.18em] " + statusTagClass(lastResult.status)}>
@@ -171,8 +187,12 @@
                     Code: <span className="font-mono text-white/90">{lastResult.code}</span> • {lastResult.time}
                   </div>
                 </div>
-              ) : (
+              ) : 
+              
+              /* STATE 3: IDLE */
+              (
                 <div className="text-center max-w-md space-y-2">
+                  <div className="text-4xl opacity-50 mb-2">📡</div>
                   <p className="text-sm text-white/60">Waiting for scan...</p>
                 </div>
               )}

@@ -1,1173 +1,777 @@
 // js/ParticipantDashboard.js
-// Combined: ParticipantDashboard + "Submit Paper" feature (from PresenterDashboard)
-// ✅ Supabase REMOVED (no DB/storage). Everything works in UI using local state + optional callbacks.
-// - Registration: calls onRegister(event, preparedForm)
-// - Paper submit: calls onSubmitPaper(payload) if provided, then stores locally for status table
-//
-// Optional new props (backward-compatible):
-//   submissions: array of existing submissions
-//   onSubmitPaper: async function({ title, track, abstract, file, eventId, user })
-//   onUpdateUser: function(updatedUser) // NEW: Updates user state after business card edit
-//
-// NOTE: This file assumes your global helper classes exist (grad-btn, badge-soft, etc.)
-// It also includes safe fallback helpers for classNames + formatDateRange.
-
-const { useState, useEffect } = React;
-
-// ---------- Safe helpers (fallbacks) ----------
-function classNames(...args) {
-  return args.filter(Boolean).join(" ");
-}
-
-function formatDateRange(start, end) {
-  if (!start && !end) return "";
-  try {
-    const s = start ? new Date(start) : null;
-    const e = end ? new Date(end) : null;
-
-    const validS = s && !isNaN(s.getTime());
-    const validE = e && !isNaN(e.getTime());
-
-    if (validS && validE) {
-      const sameMonth =
-        s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear();
-      const opts = { month: "short", day: "numeric" };
-      const sPart = s.toLocaleDateString(undefined, opts);
-      const ePart = e.toLocaleDateString(undefined, opts);
-      const year = s.getFullYear();
-      return sameMonth
-        ? `${sPart}–${e.getDate()}, ${year}`
-        : `${sPart} – ${ePart}, ${year}`;
-    }
-
-    const d = validS ? s : validE ? e : null;
-    return d ? d.toLocaleDateString() : "";
-  } catch {
-    return "";
+(function(){
+  // 1. Guard: Ensure React exists
+  if (!window.React || !window.React.useState) {
+    console.error("ParticipantDashboard: React not found.");
+    return;
   }
-}
 
-function slugify(s) {
-  return String(s || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
+  const { useState, useEffect } = window.React;
 
-// Normalize submission (keeps compatibility with your Supabase-shaped rows if you pass them in)
-function normalizeSubmission(row) {
-  if (!row) return row;
-  return {
-    id: row.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    userEmail: row.user_email ?? row.userEmail ?? row.email ?? "",
-    eventId: row.event_id ?? row.eventId ?? null,
-    title: row.title ?? "",
-    track: row.track ?? "General Research",
-    abstract: row.abstract ?? "",
-    status: row.status ?? "under_review",
-    fileName: row.file_name ?? row.fileName ?? "",
-    filePath: row.file_path ?? row.filePath ?? "", // not used (no storage)
-    submittedAt:
-      row.submitted_at ??
-      row.submittedAt ??
-      row.created_at ??
-      row.createdAt ??
-      null,
-  };
-}
+  // ---------- Safe helpers (fallbacks) ----------
+  function classNames(...args) {
+    return args.filter(Boolean).join(" ");
+  }
 
-/* =========================================================
-   CONEXUS UNIVERSITY THEME (design-only; no logic changes)
-   - Matches App.js palette + card/button system
-   ========================================================= */
-(function injectConexusParticipantTheme() {
-  try {
-    if (typeof document === "undefined") return;
+  function formatDateRange(start, end) {
+    if (!start && !end) return "";
+    try {
+      const s = start ? new Date(start) : null;
+      const e = end ? new Date(end) : null;
+      const validS = s && !isNaN(s.getTime());
+      const validE = e && !isNaN(e.getTime());
+      if (validS && validE) {
+        const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear();
+        const opts = { month: "short", day: "numeric" };
+        const sPart = s.toLocaleDateString(undefined, opts);
+        const ePart = e.toLocaleDateString(undefined, opts);
+        const year = s.getFullYear();
+        return sameMonth ? `${sPart}–${e.getDate()}, ${year}` : `${sPart} – ${ePart}, ${year}`;
+      }
+      const d = validS ? s : validE ? e : null;
+      return d ? d.toLocaleDateString() : "";
+    } catch { return ""; }
+  }
 
-    // 1) Base theme (shared) — only insert if missing
-    const BASE_ID = "conexus-global-styles";
-    if (!document.getElementById(BASE_ID)) {
+  function normalizeSubmission(row) {
+    if (!row) return row;
+    return {
+      id: row.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      userEmail: row.user_email ?? row.userEmail ?? row.email ?? "",
+      eventId: row.event_id ?? row.eventId ?? null,
+      title: row.title ?? "",
+      track: row.track ?? "General Research",
+      abstract: row.abstract ?? "",
+      status: row.status ?? "under_review",
+      fileName: row.file_name ?? row.fileName ?? "",
+      filePath: row.file_path ?? row.filePath ?? "",
+      submittedAt: row.submitted_at ?? row.submittedAt ?? row.created_at ?? row.createdAt ?? null,
+    };
+  }
+
+  /* =========================================================
+     CONEXUS UNIVERSITY THEME (Dashboard Integration)
+     ========================================================= */
+  (function injectDashboardUniversityStyles() {
+    try {
+      if (typeof document === "undefined") return;
+      const ID = "participant-university-theme";
+      if (document.getElementById(ID)) return;
       const style = document.createElement("style");
-      style.id = BASE_ID;
+      style.id = ID;
       style.textContent = `
-        :root{
-          --u-navy:#0B1735;
-          --u-blue:#1E5AA8;
-          --u-sky:#F3F7FF;
-          --u-gold:#F5C518;
-          --u-ink:#0B1735;
-          --u-muted:rgba(11,23,53,.62);
+        .badge-academic {
+          font-size: 10px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 4px 10px;
+          border-radius: 6px;
+        }
+        .badge-academic-gold { background: var(--u-gold); color: var(--u-navy); }
+        .badge-academic-blue { background: var(--u-sky); color: var(--u-blue); border: 1px solid rgba(30,90,168,.15); }
+        
+        .u-input-academic {
+          width: 100%;
+          padding: 10px 14px;
+          border-radius: 12px;
+          border: 1px solid var(--u-border);
+          font-size: 14px;
+          transition: all 0.2s ease;
+          background: #fff;
+        }
+        .u-input-academic:focus {
+          border-color: var(--u-blue);
+          box-shadow: 0 0 0 4px rgba(30,90,168,.08);
+          outline: none;
+        }
 
-          /* legacy compat */
-          --brand: var(--u-blue);
-          --accent1: var(--u-blue);
-          --accent2: #1b4e91;
-          --accent3: var(--u-gold);
+        .table-academic thead {
+          background: var(--u-sky);
+          border-bottom: 2px solid var(--u-border);
         }
-        html,body{height:100%}
-        body{
-          background: radial-gradient(900px 420px at 10% 10%, rgba(30,90,168,.18), transparent 60%),
-                      radial-gradient(900px 420px at 90% 20%, rgba(245,197,24,.16), transparent 60%),
-                      linear-gradient(180deg,#fff,var(--u-sky));
-          color:var(--u-ink);
-        }
-        .bg-page{
-          background: radial-gradient(900px 420px at 10% 10%, rgba(30,90,168,.18), transparent 60%),
-                      radial-gradient(900px 420px at 90% 20%, rgba(245,197,24,.16), transparent 60%),
-                      linear-gradient(180deg,#fff,var(--u-sky));
-        }
-        .text-brand{color:var(--u-navy)}
-        .text-muted{color:var(--u-muted)}
-        .u-card{
-          background: rgba(255,255,255,.86);
-          border: 1px solid rgba(11,23,53,.10);
-          box-shadow: 0 18px 44px rgba(11,23,53,.10);
-          backdrop-filter: blur(10px);
-        }
-        .u-soft{background: rgba(30,90,168,.06)}
-        .u-line{border-color: rgba(11,23,53,.10)}
-        .u-btn-gold{
-          background: var(--u-gold);
+        .table-academic th {
+          font-size: 11px;
+          font-weight: 800;
           color: var(--u-navy);
-          border: 1px solid rgba(11,23,53,.12);
-          box-shadow: 0 12px 28px rgba(11,23,53,.12);
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
         }
-        .u-btn-outline{
-          background: rgba(255,255,255,.72);
-          color: var(--u-navy);
-          border: 1px solid rgba(11,23,53,.14);
-          box-shadow: 0 12px 28px rgba(11,23,53,.10);
-        }
-        .grad-btn{
-          background: linear-gradient(135deg,var(--u-blue),var(--u-navy));
-          box-shadow: 0 14px 36px rgba(11,23,53,.18);
-        }
-        .hover-card{transition: transform .2s ease, box-shadow .2s ease}
-        .hover-card:hover{transform: translateY(-2px); box-shadow: 0 22px 54px rgba(11,23,53,.14)}
-        .scrollbar-hide::-webkit-scrollbar{display:none}
-        .scrollbar-hide{-ms-overflow-style:none; scrollbar-width:none}
 
-        /* legacy helper classes */
-        .bg-soft{background: rgba(30,90,168,.06)}
-        .shadow-card{box-shadow: 0 18px 44px rgba(11,23,53,.10)}
-        .shadow-glow{box-shadow: 0 28px 70px rgba(11,23,53,.16)}
-        .bg-brand{background: linear-gradient(135deg,var(--u-blue),var(--u-navy))}
-        .border-brand{border-color: rgba(30,90,168,.28)}
-        .animate-fade-in-up{animation: fadeInUp .25s ease both}
-        @keyframes fadeInUp{from{opacity:0; transform: translateY(8px)}to{opacity:1; transform: translateY(0)}}
+        .status-dot {
+          height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 6px;
+        }
+        .bg-under_review { background: #f59e0b; }
+        .bg-accepted { background: #10b981; }
+        .bg-rejected { background: #ef4444; }
+
+        /* --- NEW REGISTRATION TAB STYLES --- */
+        .reg-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          gap: 1.5rem;
+        }
+        .reg-card {
+          background: white;
+          border: 1px solid rgba(0,0,0,0.05);
+          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          position: relative;
+          display: flex;
+          flex-direction: column;
+        }
+        .reg-card:hover {
+          transform: translateY(-8px);
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+          border-color: var(--u-blue);
+        }
+        .status-pill {
+          font-size: 10px;
+          font-weight: 800;
+          text-transform: uppercase;
+          padding: 6px 12px;
+          border-radius: 99px;
+          letter-spacing: 0.05em;
+        }
+        .status-Approved { background: #ecfdf5; color: #065f46; border: 1px solid #10b98133; }
+        .status-Pending { background: #fffbeb; color: #92400e; border: 1px solid #f59e0b33; }
+        .status-Rejected { background: #fef2f2; color: #991b1b; border: 1px solid #ef444433; }
       `;
       document.head.appendChild(style);
-    }
+    } catch (e) {}
+  })();
 
-    // 2) Participant-specific extras — insert once
-    const EXTRA_ID = "conexus-participant-styles";
-    if (document.getElementById(EXTRA_ID)) return;
+  // --- COMPONENT: REGISTRATION DETAILS MODAL ---
+  function RegistrationDetailsModal({ reg, event, onClose }) {
+    if (!reg) return null;
+    
+    // Construct image URL assuming backend is on port 8000
+    const fileUrl = reg.validId ? `http://localhost:8000/${reg.validId}` : null;
+    const companions = Array.isArray(reg.companions) ? reg.companions : [];
 
-    const extra = document.createElement("style");
-    extra.id = EXTRA_ID;
-    extra.textContent = `
-      /* badges (fallback if not defined elsewhere) */
-      .badge-soft{
-        display:inline-flex; align-items:center;
-        padding:.28rem .55rem;
-        border-radius:999px;
-        font-weight:800;
-        font-size:11px;
-        border:1px solid rgba(11,23,53,.10);
-        background: rgba(255,255,255,.72);
-        color: rgba(11,23,53,.78);
-      }
-      .badge-soft-amber{ background: rgba(245,197,24,.18); border-color: rgba(245,197,24,.28); color: rgba(11,23,53,.86); }
-      .badge-soft-green{ background: rgba(16,185,129,.14); border-color: rgba(16,185,129,.24); color: rgba(11,23,53,.86); }
-      .badge-soft-rose{  background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.22); color: rgba(11,23,53,.86); }
-
-      /* spinner fallback */
-      .spinner{
-        width:16px; height:16px; border-radius:999px;
-        border:2px solid rgba(11,23,53,.18);
-        border-top-color: rgba(30,90,168,.70);
-        animation: spin .8s linear infinite;
-      }
-      @keyframes spin{to{transform: rotate(360deg)}}
-
-      /* nicer table header */
-      .table-head{
-        background: rgba(30,90,168,.06);
-        border-bottom: 1px solid rgba(11,23,53,.08);
-      }
-    `;
-    document.head.appendChild(extra);
-  } catch (_) {}
-})();
-
-function ParticipantDashboard({
-  user,
-  events,
-  loading,
-  registrations,
-  onRegister,
-  onDownloadInvitation,
-  submissions: submissionsProp,
-  onSubmitPaper,
-  onUpdateUser // <-- NEW PROP for Business Card editing
-}) {
-  // Tabs: upcoming | my | submit | business_card
-  const [tab, setTab] = useState("upcoming");
-  const [filterType, setFilterType] = useState("all");
-  const [selectedEvent, setSelectedEvent] = useState(null);
-
-  // Registration form
-  const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    university: "",
-    contact: "",
-    notes: "",
-  });
-
-  const [participantsCount, setParticipantsCount] = useState(1);
-  const [saving, setSaving] = useState(false);
-
-  // confirmation modal for irreversible action
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingPayload, setPendingPayload] = useState(null);
-
-  // animation for register modal
-  const [modalVisible, setModalVisible] = useState(false);
-
-  // animation for upcoming events list
-  const [animateUpcoming, setAnimateUpcoming] = useState(false);
-
-  // inline error text (now for callback errors / validation)
-  const [errorMessage, setErrorMessage] = useState("");
-
-  // -------- Submit Paper state (LOCAL) --------
-  const [paperForm, setPaperForm] = useState({
-    title: "",
-    track: "General Research",
-    abstract: "",
-    // future: eventId
-  });
-  const [paperFile, setPaperFile] = useState(null);
-  const [paperFileName, setPaperFileName] = useState("");
-  const [paperSaving, setPaperSaving] = useState(false);
-  const [paperError, setPaperError] = useState("");
-  const [paperSuccess, setPaperSuccess] = useState("");
-
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [submissions, setSubmissions] = useState(
-    Array.isArray(submissionsProp) ? submissionsProp.map(normalizeSubmission) : []
-  );
-
-  // Keep in sync if parent sends new submissions
-  useEffect(() => {
-    if (Array.isArray(submissionsProp)) {
-      setSubmissions(submissionsProp.map(normalizeSubmission));
-    }
-  }, [submissionsProp]);
-
-  const upcomingEvents = (events || []).filter((e) => !e.past);
-  const myEvents = registrations || [];
-
-  const upcomingCount = upcomingEvents.length;
-  const myCount = myEvents.length;
-
-  const mySubmissions = submissions.filter((s) => {
-    const email = (user && (user.email || user.userEmail)) || "";
     return (
-      String(s.userEmail || "").toLowerCase() === String(email).toLowerCase()
+      <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 overflow-y-auto" onClick={onClose}>
+        <div className="w-full max-w-lg animate-fade-in-up my-auto" onClick={e => e.stopPropagation()}>
+          <div className="rounded-[2rem] overflow-hidden bg-white shadow-2xl border border-gray-100">
+            {/* Header */}
+            <div className="px-8 py-6 bg-[var(--u-navy)] text-white relative">
+               <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--u-gold)]" />
+               <div className="flex justify-between items-start">
+                 <div>
+                   <h3 className="text-xl font-extrabold">Registration Details</h3>
+                   <p className="text-xs text-white/70 mt-1">Ref: <span className="font-mono text-[var(--u-gold)]">{reg.id}</span></p>
+                 </div>
+                 <button onClick={onClose} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition">✕</button>
+               </div>
+            </div>
+
+            <div className="p-8 space-y-6">
+               {/* Event Summary */}
+               <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Event</p>
+                    <h4 className="text-lg font-bold text-brand leading-tight">{reg.eventTitle}</h4>
+                    {event && (
+                        <div className="mt-2 text-xs text-gray-600 space-y-1">
+                            <p className="flex items-center gap-2">📅 <strong>{formatDateRange(event.startDate, event.endDate)}</strong></p>
+                            <p className="flex items-center gap-2">📍 {event.location} ({event.mode})</p>
+                        </div>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</p>
+                    <span className={classNames("badge-academic", reg.status === "Approved" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
+                        {reg.status || "Pending"}
+                    </span>
+                  </div>
+               </div>
+
+               {/* Event Description */}
+               {event?.description && (
+                   <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Description</p>
+                       <p className="text-xs text-gray-600 leading-relaxed line-clamp-3">
+                           {event.description}
+                       </p>
+                   </div>
+               )}
+
+               {/* Valid ID Display */}
+               <div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Submitted ID</p>
+                  {fileUrl ? (
+                    <div className="w-full h-40 bg-gray-100 rounded-xl overflow-hidden border border-gray-200 relative group">
+                        <img 
+                            src={fileUrl} 
+                            alt="Valid ID" 
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            onError={(e) => {e.target.style.display='none'; e.target.nextSibling.style.display='flex'}} 
+                        />
+                        <div className="hidden absolute inset-0 items-center justify-center text-xs text-gray-400 font-bold">Preview not available</div>
+                        <a href={fileUrl} target="_blank" className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-all backdrop-blur-sm">
+                            View Full Image ↗
+                        </a>
+                    </div>
+                  ) : (
+                    <div className="w-full h-24 bg-gray-50 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400 italic">
+                        No ID uploaded.
+                    </div>
+                  )}
+               </div>
+
+               {/* Companions List */}
+               {companions.length > 0 && (
+                 <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Companions ({companions.length})</p>
+                    <div className="space-y-2 max-h-32 overflow-y-auto pr-1 scrollbar-hide">
+                        {companions.map((c, i) => (
+                            <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <span className="text-xs font-bold text-gray-700">{c.name}</span>
+                                <span className="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded">{c.relation || "Guest"}</span>
+                            </div>
+                        ))}
+                    </div>
+                 </div>
+               )}
+
+               <button onClick={onClose} className="w-full py-3 rounded-xl border border-gray-200 font-extrabold text-sm text-gray-600 hover:bg-gray-50 transition">
+                 Close
+               </button>
+            </div>
+          </div>
+        </div>
+      </div>
     );
-  });
-
-  const visibleSubmissions =
-    statusFilter === "all"
-      ? mySubmissions
-      : mySubmissions.filter(
-          (s) => (s.status || "under_review") === statusFilter
-        );
-
-  // smooth pop-in for register modal
-  useEffect(() => {
-    let id;
-    if (selectedEvent) {
-      setModalVisible(false);
-      id = setTimeout(() => setModalVisible(true), 10);
-    } else {
-      setModalVisible(false);
-    }
-    return () => id && clearTimeout(id);
-  }, [selectedEvent]);
-
-  // pop-up animation whenever Upcoming tab is active
-  useEffect(() => {
-    if (tab !== "upcoming") return;
-    setAnimateUpcoming(false);
-    const id = setTimeout(() => setAnimateUpcoming(true), 10);
-    return () => clearTimeout(id);
-  }, [tab, upcomingEvents.length]);
-
-  function filteredUpcoming() {
-    let list = upcomingEvents;
-    if (filterType !== "all") {
-      list = list.filter(
-        (e) =>
-          String(e.mode || "").toLowerCase() ===
-            String(filterType).toLowerCase() ||
-          String(e.type || "").toLowerCase() ===
-            String(filterType).toLowerCase()
-      );
-    }
-    return list;
   }
 
-  function openRegisterModal(event) {
-    setSelectedEvent(event);
-    setParticipantsCount(1);
-    setFormData({
-      fullName: user?.name || "",
-      email: user?.email || "",
-      university: user?.university || "",
-      contact: "",
-      notes: "",
-    });
-    setErrorMessage("");
-  }
+  function ParticipantDashboard({
+    user,
+    events,
+    loading,
+    registrations,
+    onRegister,
+    onDownloadInvitation,
+    submissions: submissionsProp,
+    onSubmitPaper,
+    onUpdateUser
+  }) {
+    const [tab, setTab] = useState("upcoming");
+    const [filterType, setFilterType] = useState("all");
+    const [selectedEvent, setSelectedEvent] = useState(null);
+    const [formData, setFormData] = useState({ fullName: "", email: "", university: "", contact: "", notes: "" });
+    
+    // --- Registration States ---
+    const [participantsCount, setParticipantsCount] = useState(1);
+    const [companions, setCompanions] = useState([]); 
+    const [selectedFile, setSelectedFile] = useState(null); 
+    
+    // --- View/Preview State ---
+    const [previewReg, setPreviewReg] = useState(null);
 
-  function closeRegisterModal() {
-    if (saving) return;
-    setSelectedEvent(null);
-    setErrorMessage("");
-  }
+    // --- Submission States ---
+    const [saving, setSaving] = useState(false);
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [pendingPayload, setPendingPayload] = useState(null);
+    const [modalVisible, setModalVisible] = useState(false);
+    const [animateUpcoming, setAnimateUpcoming] = useState(false);
+    
+    // --- Paper Submission States ---
+    const [paperForm, setPaperForm] = useState({ title: "", track: "General Research", abstract: "" });
+    const [paperFile, setPaperFile] = useState(null);
+    const [paperFileName, setPaperFileName] = useState("");
+    const [paperSaving, setPaperSaving] = useState(false);
+    const [paperSuccess, setPaperSuccess] = useState("");
+    const [paperError, setPaperError] = useState("");
+    
+    const [statusFilter, setStatusFilter] = useState("all");
+    const [submissions, setSubmissions] = useState(Array.isArray(submissionsProp) ? submissionsProp.map(normalizeSubmission) : []);
 
-  function incrementParticipants() {
-    setParticipantsCount((prev) => Math.min(prev + 1, 99));
-  }
+    useEffect(() => {
+      if (Array.isArray(submissionsProp)) setSubmissions(submissionsProp.map(normalizeSubmission));
+    }, [submissionsProp]);
 
-  function decrementParticipants() {
-    setParticipantsCount((prev) => Math.max(prev - 1, 1));
-  }
+    useEffect(() => {
+      let id;
+      if (selectedEvent) { setModalVisible(false); id = setTimeout(() => setModalVisible(true), 10); } 
+      else { setModalVisible(false); }
+      return () => id && clearTimeout(id);
+    }, [selectedEvent]);
 
-  function handleRegistrationFieldChange(e) {
-    const { name, value } = e.target;
-    setFormData((p) => ({ ...p, [name]: value }));
-  }
+    useEffect(() => {
+      if (tab !== "upcoming") return;
+      setAnimateUpcoming(false);
+      setTimeout(() => setAnimateUpcoming(true), 10);
+    }, [tab, events?.length]);
 
-  // first step: user submits the form -> open confirmation pop-up
-  function handleSubmit(e) {
-    e.preventDefault();
-    if (!selectedEvent) return;
+    const upcomingEvents = Array.isArray(events) ? events.filter((e) => !e.past) : [];
+    const myEvents = Array.isArray(registrations) ? registrations : [];
 
-    // simple validation
-    if (!formData.fullName || !formData.email) {
-      setErrorMessage("Please enter your full name and email.");
-      return;
-    }
+    const mySubmissions = submissions.filter((s) => String(s.userEmail || "").toLowerCase() === String(user?.email || "").toLowerCase());
+    const visibleSubmissions = statusFilter === "all" ? mySubmissions : mySubmissions.filter((s) => (s.status || "under_review") === statusFilter);
 
-    const preparedForm = {
-      ...formData,
-      participantsCount,
+    const filteredUpcoming = () => {
+      let list = upcomingEvents;
+      if (filterType !== "all") {
+        list = list.filter(e => String(e.mode || "").toLowerCase() === filterType.toLowerCase() || String(e.type || "").toLowerCase() === filterType.toLowerCase());
+      }
+      return list;
     };
 
-    setPendingPayload({
-      event: selectedEvent,
-      formData: preparedForm,
-    });
-    setConfirmOpen(true);
-  }
-
-  // second step: confirm irreversible action
-  async function handleConfirmProceed() {
-    if (!pendingPayload) {
-      setConfirmOpen(false);
-      return;
-    }
-
-    const { event, formData: preparedForm } = pendingPayload;
-
-    setSaving(true);
-    setErrorMessage("");
-
-    try {
-      if (typeof onRegister === "function") {
-        await onRegister(event, preparedForm);
-      } else {
-        console.warn(
-          "onRegister callback not provided. Registration will not persist."
-        );
-      }
-
-      // reset local state
-      setSelectedEvent(null);
+    const openRegisterModal = (event) => {
+      setSelectedEvent(event);
+      setParticipantsCount(1);
+      setCompanions([]); 
       setFormData({
-        fullName: "",
-        email: "",
-        university: "",
-        contact: "",
+        fullName: user?.name || "",
+        email: user?.email || "",
+        university: user?.university || "",
+        contact: user?.phone || "",
         notes: "",
       });
-      setParticipantsCount(1);
-      setTab("my");
-    } catch (err) {
-      console.error(err);
-      setErrorMessage(
-        "There was a problem submitting your registration. Please try again."
-      );
-      setConfirmOpen(false);
-      return;
-    } finally {
-      setSaving(false);
-      setPendingPayload(null);
-    }
+      setSelectedFile(null); 
+    };
 
-    setConfirmOpen(false);
-  }
+    const incrementParticipants = () => {
+      setParticipantsCount(prev => prev + 1);
+      setCompanions(prev => [...prev, { name: "", relation: "", phone: "", email: "" }]);
+    };
 
-  function handleConfirmCancel() {
-    if (saving) return;
-    setConfirmOpen(false);
-  }
+    const decrementParticipants = () => {
+      if (participantsCount > 1) {
+        setParticipantsCount(prev => prev - 1);
+        setCompanions(prev => prev.slice(0, -1));
+      }
+    };
 
-  // ---------- Submit Paper handlers (LOCAL) ----------
-  function handlePaperFormChange(e) {
-    const { name, value } = e.target;
-    setPaperForm((p) => ({ ...p, [name]: value }));
-  }
+    const handleCompanionChange = (index, field, value) => {
+      const updated = [...companions];
+      updated[index] = { ...updated[index], [field]: value };
+      setCompanions(updated);
+    };
 
-  function handlePaperFileChange(e) {
-    const file = e.target.files && e.target.files[0];
-    setPaperFile(file || null);
-    setPaperFileName(file ? file.name : "");
-  }
-
-  async function handlePaperSubmit(e) {
-    e.preventDefault();
-    setPaperError("");
-    setPaperSuccess("");
-
-    if (!paperForm.title) {
-      setPaperError("Please enter a paper title.");
-      return;
-    }
-    if (!paperFile) {
-      setPaperError("Please attach a PDF file.");
-      return;
-    }
-    if (paperFile && paperFile.type && paperFile.type !== "application/pdf") {
-      setPaperError("File must be a PDF.");
-      return;
-    }
-
-    setPaperSaving(true);
-
-    const email = user?.email || "";
-    const nowIso = new Date().toISOString();
-
-    // Local “submission record”
-    const localRow = normalizeSubmission({
-      id: `${Date.now()}_${slugify(paperForm.title).slice(0, 24)}`,
-      userEmail: email,
-      title: paperForm.title,
-      track: paperForm.track || "General Research",
-      abstract: paperForm.abstract || "",
-      status: "under_review",
-      fileName: paperFile.name,
-      submittedAt: nowIso,
-    });
-
-    try {
-      if (typeof onSubmitPaper === "function") {
-        const result = await onSubmitPaper({
-          title: paperForm.title,
-          track: paperForm.track,
-          abstract: paperForm.abstract,
-          file: paperFile,
-          eventId: null,
-          user,
-        });
-
-        if (result && typeof result === "object") {
-          const normalized = normalizeSubmission(result);
-          setSubmissions((prev) => [normalized, ...prev]);
-        } else {
-          setSubmissions((prev) => [localRow, ...prev]);
-        }
-      } else {
-        setSubmissions((prev) => [localRow, ...prev]);
+    const handleFinalRegistration = async () => {
+      if (!selectedFile) {
+          alert("Please upload a valid ID to proceed.");
+          return;
       }
 
-      setPaperForm({ title: "", track: "General Research", abstract: "" });
-      setPaperFile(null);
-      setPaperFileName("");
-      setPaperSuccess("Paper submitted! Status: under review.");
-    } catch (err) {
-      console.error(err);
-      setPaperError("Failed to submit paper. Please try again.");
-    } finally {
-      setPaperSaving(false);
-    }
+      setSaving(true);
+      try {
+          const payload = new FormData();
+          payload.append('user_email', formData.email);
+          payload.append('event_id', selectedEvent.id);
+          if (selectedFile) payload.append('valid_id', selectedFile); 
+          payload.append('companions', JSON.stringify(companions)); 
+
+          const response = await fetch('http://localhost:8000/api/register', {
+              method: 'POST',
+              body: payload, 
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+              alert("Registration Successful! Please wait for admin approval.");
+              setSelectedEvent(null); 
+              setConfirmOpen(false);
+              setTab("my");
+              if(onRegister) onRegister(); 
+          } else {
+              alert("Registration failed: " + (data.message || data.error));
+          }
+      } catch (error) {
+          console.error("Error:", error);
+          alert("Network error occurred.");
+      } finally {
+          setSaving(false);
+          setConfirmOpen(false);
+      }
+    };
+
+    const handlePaperSubmit = async (e) => {
+      e.preventDefault();
+      if (!paperForm.title || !paperFile) { setPaperError("Title and PDF file required."); return; }
+      setPaperSaving(true);
+      const localRow = normalizeSubmission({ id: Date.now(), userEmail: user?.email, title: paperForm.title, track: paperForm.track, status: "under_review", fileName: paperFile.name, submittedAt: new Date().toISOString() });
+      try {
+        if (typeof onSubmitPaper === "function") {
+          const result = await onSubmitPaper({ ...paperForm, file: paperFile, user });
+          setSubmissions(prev => [normalizeSubmission(result || localRow), ...prev]);
+        } else { setSubmissions(prev => [localRow, ...prev]); }
+        setPaperForm({ title: "", track: "General Research", abstract: "" });
+        setPaperFileName("");
+        setPaperSuccess("Paper submitted successfully!");
+      } catch (err) { setPaperError("Submission failed."); } finally { setPaperSaving(false); }
+    };
+
+    return (
+      <section className="relative px-4 py-10 max-w-7xl mx-auto animate-fade-in-up">
+        {/* Institutional Hero Banner */}
+        <div className="relative overflow-hidden u-hero rounded-[2.5rem] p-8 md:p-12 mb-10 shadow-2xl">
+          <div className="absolute inset-0 u-hero-grid" />
+          <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+            <div className="max-w-xl">
+              <span className="px-4 py-2 rounded-sm u-hero-badge text-[11px] font-black uppercase mb-4 inline-block shadow-sm">
+                Participant Dashboard
+              </span>
+              <h1 className="text-4xl md:text-5xl font-black text-white mb-3">Welcome, {user?.name || "Scholar"}</h1>
+              <p className="text-white/70 text-sm md:text-base leading-relaxed">
+                Your central hub for academic events, symposia, and research submissions. Track your registrations and certificates in real-time.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:flex gap-4">
+               {[ { l: 'Events', v: upcomingEvents.length }, { l: 'Registrations', v: myEvents.length } ].map((stat, i) => (
+                  <div key={i} className="u-soft rounded-2xl px-6 py-4 min-w-[120px] text-center backdrop-blur-md">
+                    <p className="text-[10px] font-black text-blue-600 uppercase mb-1 tracking-widest">{stat.l}</p>
+                    <p className="text-2xl font-black text-brand">{stat.v}</p>
+                  </div>
+               ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs / Filters Container */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+          <div className="inline-flex items-center p-1.5 bg-white u-tabs-wrap rounded-2xl shadow-sm">
+            {["upcoming", "my", "submit", "business_card"].map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={classNames(
+                  "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300",
+                  tab === t ? "u-tab-active bg-[var(--u-sky)] text-brand" : "text-gray-500 hover:text-brand"
+                )}
+              >
+                {t === "upcoming" ? "Browse Events" : t === "my" ? "Registrations" : t === "submit" ? "Submit Paper" : "Business Card"}
+              </button>
+            ))}
+          </div>
+
+          {tab === "upcoming" && (
+            <select 
+              value={filterType} 
+              onChange={(e) => setFilterType(e.target.value)} 
+              className="u-input-academic md:w-48 font-bold text-xs"
+            >
+              <option value="all">All Categories</option>
+              <option value="conference">Conference</option>
+              <option value="forum">Forum</option>
+              <option value="webinar">Webinar</option>
+            </select>
+          )}
+        </div>
+
+        {/* Tab Content */}
+        <div className="min-h-[400px]">
+          {tab === "upcoming" && (
+            <div className="grid gap-6">
+              {loading && <div className="flex justify-center p-20"><div className="spinner" /></div>}
+              {!loading && filteredUpcoming().map((event, idx) => (
+                <div 
+                  key={event.id} 
+                  className={classNames(
+                    "u-card p-7 rounded-[2rem] hover-card relative overflow-hidden flex flex-col md:flex-row items-center gap-8 transition-all duration-500",
+                    animateUpcoming ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+                  )}
+                  style={{ transitionDelay: `${idx * 100}ms` }}
+                >
+                  <div className="absolute top-0 left-0 bottom-0 w-[4px] bg-[var(--u-blue)]" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="badge-academic badge-academic-blue">{event.type}</span>
+                      <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{event.mode}</span>
+                    </div>
+                    <h3 className="text-2xl font-black text-brand mb-2">{event.title}</h3>
+                    <p className="text-gray-500 text-sm mb-5 leading-relaxed line-clamp-2">{event.description}</p>
+                    <div className="flex flex-wrap gap-5 text-xs font-bold text-gray-400">
+                      <span className="flex items-center gap-2">📅 {formatDateRange(event.startDate, event.endDate)}</span>
+                      <span className="flex items-center gap-2">📍 {event.location}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row md:flex-col gap-3 w-full md:w-56">
+                    <button onClick={() => openRegisterModal(event)} className="grad-btn px-6 py-3 rounded-xl text-white text-sm font-extrabold u-sweep relative overflow-hidden transition-all">
+                      Register Now
+                    </button>
+                    <button onClick={() => onDownloadInvitation?.(event)} className="px-6 py-3 rounded-xl border border-gray-200 text-brand text-sm font-extrabold hover:bg-gray-50 transition-all">
+                      Invitation PDF
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* --- NEW REGISTRATION GRID --- */}
+          {tab === "my" && (
+            <div className="reg-grid animate-fade-in-up">
+              {myEvents.length === 0 ? (
+                <div className="col-span-full u-card p-20 text-center rounded-[2.5rem] border-dashed border-2 flex flex-col items-center">
+                  <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-3xl mb-4">🗓️</div>
+                  <h3 className="text-xl font-black text-brand mb-2">No Registrations Yet</h3>
+                  <p className="text-gray-400 font-bold max-w-xs mx-auto mb-6">You haven't signed up for any academic events. Start exploring our upcoming schedule!</p>
+                  <button onClick={() => setTab("upcoming")} className="grad-btn px-8 py-3 rounded-xl text-white text-sm font-extrabold u-sweep relative overflow-hidden">
+                    Browse Events
+                  </button>
+                </div>
+              ) : (
+                myEvents.map((reg) => {
+                  const status = reg.status || "Pending";
+                  const isApproved = status === "Approved";
+                  return (
+                    <div key={reg.id} className="reg-card rounded-[2.5rem] p-7 shadow-sm">
+                      <div className="flex justify-between items-start mb-6">
+                        <div className="h-14 w-14 rounded-2xl bg-[var(--u-sky)] flex items-center justify-center text-2xl shadow-inner">
+                          {isApproved ? "✅" : "⏳"}
+                        </div>
+                        <span className={classNames("status-pill", `status-${status}`)}>
+                          {status}
+                        </span>
+                      </div>
+
+                      <div className="mb-6">
+                        <h3 className="text-lg font-black text-brand leading-tight mb-2 line-clamp-2">
+                          {reg.eventTitle || "Unnamed Event"}
+                        </h3>
+                        <div className="space-y-2">
+                          <p className="flex items-center gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                            <span className="opacity-50 text-base">📅</span> {formatDateRange(reg.startDate, reg.endDate)}
+                          </p>
+                          {reg.companions?.length > 0 && (
+                            <p className="inline-flex items-center px-2 py-1 rounded bg-blue-50 text-[10px] font-black text-blue-600 uppercase">
+                              +{reg.companions.length} Attendees
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-auto pt-6 border-t border-gray-50 flex gap-3">
+                        <button 
+                          onClick={() => setPreviewReg(reg)}
+                          className="flex-1 py-3 rounded-xl bg-gray-50 text-gray-600 text-[11px] font-black uppercase tracking-widest hover:bg-gray-100 transition-colors"
+                        >
+                          Details
+                        </button>
+                        {isApproved && (
+                          <button 
+                            onClick={() => onDownloadInvitation?.(reg)}
+                            className="flex-1 py-3 rounded-xl bg-[var(--u-navy)] text-white text-[11px] font-black uppercase tracking-widest shadow-lg shadow-blue-900/20 hover:opacity-90 transition-opacity"
+                          >
+                            E-Ticket
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {tab === "submit" && (
+            <div className="grid lg:grid-cols-12 gap-8">
+              <div className="lg:col-span-4">
+                <div className="u-card p-8 rounded-[2rem]">
+                  <h3 className="text-xl font-black text-brand mb-2">Academic Submission</h3>
+                  <p className="text-xs text-gray-500 mb-6">Submit your research paper for peer review. Only PDF format is accepted.</p>
+                  <form onSubmit={handlePaperSubmit} className="space-y-4">
+                     <div><label className="text-[11px] font-black uppercase text-gray-400 mb-1 block">Paper Title</label><input className="u-input-academic" value={paperForm.title} onChange={e => setPaperForm(p=>({...p, title: e.target.value}))} placeholder="Full academic title" /></div>
+                     <div><label className="text-[11px] font-black uppercase text-gray-400 mb-1 block">Research Track</label><select className="u-input-academic" value={paperForm.track} onChange={e => setPaperForm(p=>({...p, track: e.target.value}))}><option>General Research</option><option>AI / Data Science</option><option>Education</option></select></div>
+                     <div><label className="text-[11px] font-black uppercase text-gray-400 mb-1 block">Abstract</label><textarea rows={4} className="u-input-academic" value={paperForm.abstract} onChange={e => setPaperForm(p=>({...p, abstract: e.target.value}))} placeholder="Brief summary of your work..." /></div>
+                     <div className="relative">
+                        <label className="u-input-academic border-dashed py-8 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50">
+                          <input type="file" accept=".pdf" className="hidden" onChange={e => {setPaperFile(e.target.files[0]); setPaperFileName(e.target.files[0]?.name);}} />
+                          <span className="text-blue-600 font-black text-sm">{paperFileName || "Select PDF Manuscript"}</span>
+                          <span className="text-[10px] text-gray-400 uppercase mt-1">Click to browse</span>
+                        </label>
+                     </div>
+                     <button type="submit" disabled={paperSaving} className="grad-btn w-full py-3 rounded-xl text-white font-extrabold u-sweep relative overflow-hidden">
+                       {paperSaving ? "Processing..." : "Submit Manuscript"}
+                     </button>
+                     {paperSuccess && <p className="text-emerald-600 text-xs font-bold text-center mt-2">{paperSuccess}</p>}
+                  </form>
+                </div>
+              </div>
+              <div className="lg:col-span-8">
+                 <div className="u-card rounded-[2rem] overflow-hidden">
+                    <div className="p-6 bg-gray-50/50 border-b border-gray-100 flex justify-between items-center">
+                      <h3 className="font-extrabold text-brand">Submission History</h3>
+                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest text-gray-400 focus:ring-0">
+                        <option value="all">All Records</option>
+                        <option value="under_review">Reviewing</option>
+                        <option value="accepted">Accepted</option>
+                      </select>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full table-academic">
+                        <thead>
+                          <tr>
+                            <th className="px-6 py-4 text-left">Research Work</th>
+                            <th className="px-6 py-4 text-left">Track</th>
+                            <th className="px-6 py-4 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {visibleSubmissions.map(s => (
+                            <tr key={s.id} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-6 py-5">
+                                <p className="font-extrabold text-brand">{s.title}</p>
+                                <p className="text-[10px] text-gray-400 font-bold">{s.fileName}</p>
+                              </td>
+                              <td className="px-6 py-5 text-xs font-bold text-gray-500">{s.track}</td>
+                              <td className="px-6 py-5">
+                                <span className="flex items-center text-xs font-black text-brand capitalize">
+                                  <span className={classNames("status-dot", `bg-${s.status}`)} />
+                                  {s.status?.replace('_', ' ')}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                 </div>
+              </div>
+            </div>
+          )}
+
+          {tab === "business_card" && (
+            <div className="animate-fade-in-up">
+              {/* Check if EditBusinessCard is defined globally or pass fallback */}
+              {typeof EditBusinessCard !== 'undefined' ? 
+                <EditBusinessCard user={user} onUpdateUser={onUpdateUser} /> 
+                : <p className="text-center p-10 text-gray-400">Business Card Component Loading...</p>
+              }
+            </div>
+          )}
+        </div>
+
+        {/* Registration Modal */}
+        {selectedEvent && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 overflow-y-auto" onClick={() => setSelectedEvent(null)}>
+            <div className="w-full max-w-xl animate-fade-in-up my-auto" onClick={e => e.stopPropagation()}>
+              <div className="rounded-[2.5rem] overflow-hidden u-card">
+                 <div className="px-8 py-6 bg-[var(--u-navy)] text-white relative">
+                    <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--u-gold)]" />
+                    <h3 className="text-xl md:text-2xl font-extrabold">Event Registration</h3>
+                    <p className="text-xs text-white/75 mt-1">Enrolling in: <strong className="text-[var(--u-gold)]">{selectedEvent.title}</strong></p>
+                 </div>
+                 <form onSubmit={(e) => { e.preventDefault(); setPendingPayload({event: selectedEvent, formData}); setConfirmOpen(true); }} className="p-8 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2 sm:col-span-1"><label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Full Name</label><input className="u-input-academic" value={formData.fullName} onChange={e => setFormData(p=>({...p, fullName: e.target.value}))} required /></div>
+                      <div className="col-span-2 sm:col-span-1"><label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Email</label><input className="u-input-academic" type="email" value={formData.email} onChange={e => setFormData(p=>({...p, email: e.target.value}))} required /></div>
+                      <div className="col-span-2"><label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">University/Affiliation</label><input className="u-input-academic" value={formData.university} onChange={e => setFormData(p=>({...p, university: e.target.value}))} /></div>
+                      <div className="col-span-2"><label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Contact Number</label><input className="u-input-academic" value={formData.contact} onChange={e => setFormData(p=>({...p, contact: e.target.value}))} /></div>
+                      
+                      {/* VALID ID UPLOAD */}
+                      <div className="col-span-2">
+                          <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Upload Valid ID (Required)</label>
+                          <input 
+                              type="file" 
+                              accept="image/*,application/pdf"
+                              className="u-input-academic bg-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                              onChange={(e) => setSelectedFile(e.target.files[0])}
+                              required 
+                          />
+                          <p className="text-[9px] text-gray-400 mt-1">Government or School ID required for approval.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-6 border-t border-gray-100">
+                      <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-black text-gray-400 uppercase">Attendees</span>
+                          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                             <button type="button" onClick={decrementParticipants} className="w-8 h-8 font-bold">-</button>
+                             <span className="px-4 font-black text-brand">{participantsCount}</span>
+                             <button type="button" onClick={incrementParticipants} className="w-8 h-8 font-bold">+</button>
+                          </div>
+                      </div>
+                      <div className="flex gap-2">
+                          <button type="button" onClick={() => setSelectedEvent(null)} className="px-5 py-2 text-xs font-extrabold text-gray-500">Cancel</button>
+                          <button type="submit" className="grad-btn px-6 py-2.5 rounded-xl text-white text-xs font-extrabold u-sweep relative overflow-hidden">Proceed</button>
+                      </div>
+                    </div>
+
+                    {/* DYNAMIC COMPANION INPUTS */}
+                    {companions.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in-up">
+                        <h4 className="text-xs font-black text-brand uppercase mb-3">Additional Attendees</h4>
+                        <div className="space-y-4 max-h-60 overflow-y-auto pr-2 scrollbar-hide">
+                          {companions.map((comp, index) => (
+                            <div key={index} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                              <p className="text-[10px] font-bold text-blue-500 uppercase mb-2">Guest {index + 1}</p>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2 sm:col-span-1">
+                                  <input 
+                                    className="u-input-academic text-xs" 
+                                    placeholder="Full Name" 
+                                    value={comp.name} 
+                                    onChange={e => handleCompanionChange(index, "name", e.target.value)} 
+                                    required 
+                                  />
+                                </div>
+                                <div className="col-span-2 sm:col-span-1">
+                                  <input 
+                                    className="u-input-academic text-xs" 
+                                    placeholder="Relation" 
+                                    value={comp.relation} 
+                                    onChange={e => handleCompanionChange(index, "relation", e.target.value)} 
+                                  />
+                                </div>
+                                <div className="col-span-2 sm:col-span-1">
+                                  <input 
+                                    className="u-input-academic text-xs" 
+                                    placeholder="Email (Optional)" 
+                                    value={comp.email} 
+                                    onChange={e => handleCompanionChange(index, "email", e.target.value)} 
+                                  />
+                                </div>
+                                <div className="col-span-2 sm:col-span-1">
+                                  <input 
+                                    className="u-input-academic text-xs" 
+                                    placeholder="Phone (Optional)" 
+                                    value={comp.phone} 
+                                    onChange={e => handleCompanionChange(index, "phone", e.target.value)} 
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation Modal */}
+        {confirmOpen && (
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="u-card rounded-[2rem] p-8 max-w-sm w-full text-center">
+              <h3 className="text-xl font-black text-brand mb-2">Final Step</h3>
+              <p className="text-sm text-gray-500 mb-6 leading-relaxed">Confirming will submit your details to the organizers for approval. Action is irreversible.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setConfirmOpen(false)} className="flex-1 py-3 rounded-xl bg-gray-100 font-extrabold text-gray-600 text-sm">Review</button>
+                <button onClick={handleFinalRegistration} className="flex-1 py-3 rounded-xl grad-btn text-white font-extrabold text-sm u-sweep relative overflow-hidden">
+                  {saving ? "Processing..." : "Confirm"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PREVIEW DETAILS MODAL */}
+        {previewReg && (
+            <RegistrationDetailsModal 
+                reg={previewReg} 
+                event={events.find(e => String(e.id) === String(previewReg.eventId))}
+                onClose={() => setPreviewReg(null)} 
+            />
+        )}
+
+      </section>
+    );
   }
 
-  const upcomingFiltered = filteredUpcoming();
-
-  // shared “App.js-like” field styles
-  const labelCls =
-    "block mb-1 text-[10px] text-[rgba(11,23,53,.65)] font-extrabold uppercase tracking-widest";
-  const inputCls =
-    "w-full rounded-2xl border border-[rgba(11,23,53,.14)] bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[rgba(30,90,168,.22)]";
-  const textareaCls =
-    "w-full rounded-2xl border border-[rgba(11,23,53,.14)] bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[rgba(30,90,168,.22)]";
-  const selectCls =
-    "w-full rounded-2xl border border-[rgba(11,23,53,.14)] bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[rgba(30,90,168,.22)]";
-
-  const btnGold =
-    "px-4 py-2.5 rounded-2xl u-btn-gold text-[var(--u-navy)] text-sm font-extrabold shadow-card hover:opacity-[.98] hover:-translate-y-0.5 transition disabled:opacity-70";
-  const btnOutline =
-    "px-4 py-2.5 rounded-2xl u-btn-outline text-[var(--u-navy)] text-sm font-extrabold hover:-translate-y-0.5 transition disabled:opacity-70";
-  const btnGrad =
-    "px-4 py-2.5 rounded-2xl grad-btn text-white text-sm font-extrabold shadow-card hover:opacity-[.98] hover:-translate-y-0.5 transition disabled:opacity-70";
-
-  return (
-    <section className="relative px-4 py-10 max-w-7xl mx-auto">
-      {/* Hero / stats */}
-      <div className="relative mb-8 rounded-3xl overflow-hidden bg-brand text-white shadow-glow">
-        <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_10%_10%,rgba(245,197,24,0.20),transparent_55%),radial-gradient(circle_at_90%_0,rgba(255,255,255,0.18),transparent_55%)]" />
-        <div className="relative px-6 py-6 md:px-8 md:py-7 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-          <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white/70 mb-1 font-extrabold">
-              Participant dashboard
-            </p>
-            <h1 className="text-2xl sm:text-3xl font-black truncate">
-              Hello, {user?.name || "Participant"} 👋
-            </h1>
-            <p className="mt-1 text-xs sm:text-sm text-white/85 max-w-xl">
-              Discover campus research events, reserve your slot, and submit your paper when ready.
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-            {/* Submit Paper button */}
-            <button
-              type="button"
-              onClick={() => setTab("submit")}
-              className={classNames(btnGold, "w-full sm:w-auto")}
-            >
-              Submit Paper
-            </button>
-
-            <div className="flex gap-3 text-xs sm:text-sm">
-              <div className="bg-white/12 backdrop-blur-sm rounded-2xl px-4 py-3 min-w-[110px] border border-white/15">
-                <div className="text-[11px] uppercase tracking-wide text-white/70 mb-1 font-extrabold">
-                  Upcoming
-                </div>
-                <div className="text-lg font-black leading-tight">{upcomingCount}</div>
-                <div className="text-[11px] text-white/80 font-extrabold">events</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-3 min-w-[110px] border border-white/12">
-                <div className="text-[11px] uppercase tracking-wide text-white/70 mb-1 font-extrabold">
-                  My spots
-                </div>
-                <div className="text-lg font-black leading-tight">{myCount}</div>
-                <div className="text-[11px] text-white/80 font-extrabold">registrations</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-3 min-w-[110px] border border-white/12">
-                <div className="text-[11px] uppercase tracking-wide text-white/70 mb-1 font-extrabold">
-                  Papers
-                </div>
-                <div className="text-lg font-black leading-tight">{mySubmissions.length}</div>
-                <div className="text-[11px] text-white/80 font-extrabold">submitted</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs + filters */}
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-full u-soft border border-[rgba(11,23,53,.10)] p-1 text-[11px] shadow-sm">
-          {["upcoming", "my", "submit", "business_card"].map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={classNames(
-                "px-4 py-2 rounded-full transition-all font-extrabold",
-                tab === t
-                  ? "bg-white shadow-card text-brand"
-                  : "text-[rgba(11,23,53,.60)] hover:text-[var(--u-navy)]"
-              )}
-            >
-              {t === "upcoming"
-                ? "Upcoming events"
-                : t === "my"
-                ? "My registrations"
-                : t === "submit"
-                ? "Submit paper"
-                : "My Business Card"}
-            </button>
-          ))}
-        </div>
-
-        {tab === "upcoming" && (
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="text-xs rounded-full border border-[rgba(11,23,53,.14)] px-4 py-2 bg-white text-[rgba(11,23,53,.78)] shadow-sm font-extrabold"
-          >
-            <option value="all">All types</option>
-            <option value="conference">Conferences</option>
-            <option value="forum">Forums</option>
-            <option value="webinar">Webinars</option>
-            <option value="hybrid">Hybrid</option>
-            <option value="on-site">On-site</option>
-            <option value="online">Online</option>
-          </select>
-        )}
-
-        {tab === "submit" && (
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs rounded-full border border-[rgba(11,23,53,.14)] px-4 py-2 bg-white text-[rgba(11,23,53,.78)] shadow-sm font-extrabold"
-          >
-            <option value="all">All statuses</option>
-            <option value="under_review">Under review</option>
-            <option value="accepted">Accepted</option>
-            <option value="rejected">Rejected</option>
-          </select>
-        )}
-      </div>
-
-      {/* UPCOMING EVENTS TAB */}
-      {tab === "upcoming" && (
-        <div className="space-y-4">
-          {loading && (
-            <div className="flex items-center gap-3 text-sm text-[rgba(11,23,53,.62)] font-extrabold">
-              <div className="spinner" />
-              Loading upcoming events…
-            </div>
-          )}
-
-          {!loading && upcomingFiltered.length === 0 && (
-            <div className="rounded-3xl border border-dashed border-[rgba(11,23,53,.18)] bg-white/80 p-6 text-sm text-[rgba(11,23,53,.62)] u-card">
-              No upcoming events yet. Once your research office publishes events, they’ll appear here.
-            </div>
-          )}
-
-          {!loading &&
-            upcomingFiltered.map((event, idx) => (
-              <div
-                key={event.id}
-                className={classNames(
-                  "relative overflow-hidden rounded-3xl u-card p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 transition-all duration-200",
-                  animateUpcoming
-                    ? "opacity-100 translate-y-0 scale-100"
-                    : "opacity-0 translate-y-3 scale-95"
-                )}
-                style={{ transitionDelay: `${idx * 40}ms` }}
-              >
-                <div className="absolute inset-y-0 left-0 w-1 bg-[linear-gradient(180deg,var(--u-blue),var(--u-navy))]" />
-                <div className="relative flex-1">
-                  <h3 className="font-black text-brand mb-1">{event.title}</h3>
-                  <p className="text-sm text-[rgba(11,23,53,.70)] mb-2">
-                    {event.description}
-                  </p>
-                  <p className="text-xs text-[rgba(11,23,53,.62)] mb-2 font-extrabold">
-                    📅 {formatDateRange(event.startDate, event.endDate)} • 📍 {event.location}
-                  </p>
-                  <p className="text-[11px] text-[rgba(11,23,53,.55)] font-extrabold">
-                    Type: {event.type} • Mode: {event.mode}
-                  </p>
-                </div>
-
-                <div className="relative flex flex-col items-stretch gap-2 w-full md:w-[240px]">
-                  <button
-                    type="button"
-                    onClick={() => openRegisterModal(event)}
-                    className={classNames(btnGrad, "w-full")}
-                  >
-                    Register for this event
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDownloadInvitation && onDownloadInvitation(event)}
-                    className={classNames(btnOutline, "w-full")}
-                  >
-                    Download invitation
-                  </button>
-                </div>
-              </div>
-            ))}
-        </div>
-      )}
-
-      {/* MY REGISTRATIONS TAB */}
-      {tab === "my" && (
-        <div className="space-y-4">
-          {myEvents.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[rgba(11,23,53,.18)] bg-white/80 p-6 text-sm text-[rgba(11,23,53,.62)] u-card">
-              Once you register for an event, it will appear here.
-            </div>
-          ) : (
-            myEvents.map((reg) => {
-              const status = reg.status || "For approval";
-              let badgeClass = "badge-soft badge-soft-amber";
-              if (status === "Approved") badgeClass = "badge-soft badge-soft-green";
-              else if (status === "Rejected") badgeClass = "badge-soft badge-soft-rose";
-
-              return (
-                <div
-                  key={reg.id}
-                  className="relative overflow-hidden rounded-3xl u-card p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                >
-                  <div className="absolute inset-y-0 left-0 w-1 bg-[linear-gradient(180deg,rgba(16,185,129,.80),var(--u-blue))]" />
-                  <div className="relative">
-                    <h3 className="font-black text-brand mb-1">{reg.eventTitle}</h3>
-                    <p className="text-xs text-[rgba(11,23,53,.62)] font-extrabold">
-                      📅 {formatDateRange(reg.startDate, reg.endDate)} • 📍 {reg.location}
-                    </p>
-                    {reg.notes && (
-                      <p className="mt-1 text-xs text-[rgba(11,23,53,.62)]">
-                        Notes: {reg.notes}
-                      </p>
-                    )}
-                  </div>
-                  <div className="relative flex flex-col items-end gap-1 text-xs text-[rgba(11,23,53,.62)] font-extrabold">
-                    <span className={badgeClass}>{status}</span>
-                    <span>Registered as {user?.name || user?.email}</span>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {/* SUBMIT PAPER TAB */}
-      {tab === "submit" && (
-        <div className="grid gap-4 lg:grid-cols-3">
-          {/* Left: Submit form */}
-          <div className="lg:col-span-1">
-            <div className="hover-card rounded-3xl u-card overflow-hidden">
-              <div className="px-6 py-5 border-b border-[rgba(11,23,53,.08)] bg-[rgba(30,90,168,.04)]">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-[rgba(11,23,53,.55)] font-extrabold">
-                  Paper submission
-                </p>
-                <h3 className="text-lg text-brand font-black mt-1">
-                  Submit your research paper
-                </h3>
-                <p className="text-xs text-[rgba(11,23,53,.62)] mt-1">
-                  Upload a PDF, choose a track, and we’ll mark it as <b>Under review</b>.
-                </p>
-              </div>
-
-              <form onSubmit={handlePaperSubmit} className="px-6 py-5 space-y-3 text-sm">
-                {paperError && (
-                  <div className="rounded-2xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-700 font-extrabold">
-                    {paperError}
-                  </div>
-                )}
-                {paperSuccess && (
-                  <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700 font-extrabold">
-                    {paperSuccess}
-                  </div>
-                )}
-
-                <div>
-                  <label className={labelCls}>Paper title</label>
-                  <input
-                    type="text"
-                    name="title"
-                    value={paperForm.title}
-                    onChange={handlePaperFormChange}
-                    className={inputCls}
-                    placeholder="e.g., Predictive Analytics for Academic Excellence"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className={labelCls}>Track</label>
-                  <select
-                    name="track"
-                    value={paperForm.track}
-                    onChange={handlePaperFormChange}
-                    className={selectCls}
-                  >
-                    <option>General Research</option>
-                    <option>AI / Data Science</option>
-                    <option>Education</option>
-                    <option>Health & Life Sciences</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className={labelCls}>Abstract</label>
-                  <textarea
-                    name="abstract"
-                    value={paperForm.abstract}
-                    onChange={handlePaperFormChange}
-                    rows={4}
-                    className={textareaCls}
-                    placeholder="Paste a short abstract or summary of your study."
-                  />
-                </div>
-
-                <div>
-                  <label className={labelCls}>PDF file</label>
-                  <label className="block w-full rounded-2xl border border-dashed border-[rgba(11,23,53,.20)] bg-[rgba(30,90,168,.05)] px-3 py-3 text-xs text-[rgba(11,23,53,.62)] cursor-pointer hover:bg-white hover:border-[rgba(11,23,53,.22)] transition font-extrabold">
-                    <input
-                      type="file"
-                      accept="application/pdf"
-                      className="hidden"
-                      onChange={handlePaperFileChange}
-                    />
-                    {paperFileName ? (
-                      <span>
-                        <span className="font-black text-brand">{paperFileName}</span>
-                        <span className="text-[rgba(11,23,53,.55)]"> (click to change)</span>
-                      </span>
-                    ) : (
-                      <span>Click to upload PDF</span>
-                    )}
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={paperSaving}
-                  className={classNames(btnGold, "mt-2 w-full")}
-                >
-                  {paperSaving ? "Submitting..." : "Submit paper"}
-                </button>
-
-                <p className="text-[11px] text-[rgba(11,23,53,.55)] font-extrabold">
-                  Tip: If you want this to persist, pass an <code>onSubmitPaper</code> callback and save to your backend.
-                </p>
-              </form>
-            </div>
-          </div>
-
-          {/* Right: Status list */}
-          <div className="lg:col-span-2">
-            <div className="hover-card rounded-3xl u-card overflow-hidden">
-              <div className="px-6 py-5 border-b border-[rgba(11,23,53,.08)] bg-[rgba(30,90,168,.04)] flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-[rgba(11,23,53,.55)] font-extrabold">
-                    Submission status
-                  </p>
-                  <h3 className="text-lg text-brand font-black mt-1">
-                    Your submitted papers
-                  </h3>
-                  <p className="text-xs text-[rgba(11,23,53,.62)] mt-1">
-                    Filter by status using the dropdown above.
-                  </p>
-                </div>
-                <div className="hidden sm:flex items-center gap-2 text-xs">
-                  <span className="badge-soft badge-soft-amber">Under review</span>
-                  <span className="badge-soft badge-soft-green">Accepted</span>
-                  <span className="badge-soft badge-soft-rose">Rejected</span>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-xs">
-                  <thead className="table-head">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-extrabold text-[rgba(11,23,53,.60)] uppercase tracking-widest">
-                        Title
-                      </th>
-                      <th className="px-4 py-3 text-left font-extrabold text-[rgba(11,23,53,.60)] uppercase tracking-widest">
-                        Track
-                      </th>
-                      <th className="px-4 py-3 text-left font-extrabold text-[rgba(11,23,53,.60)] uppercase tracking-widest">
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-left font-extrabold text-[rgba(11,23,53,.60)] uppercase tracking-widest">
-                        Submitted
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[rgba(11,23,53,.06)]">
-                    {visibleSubmissions.map((s) => {
-                      const status = s.status || "under_review";
-                      let badgeClass = "badge-soft badge-soft-amber";
-                      if (status === "accepted") badgeClass = "badge-soft badge-soft-green";
-                      else if (status === "rejected") badgeClass = "badge-soft badge-soft-rose";
-
-                      const submittedLabel = s.submittedAt
-                        ? (() => {
-                            try {
-                              const d = new Date(s.submittedAt);
-                              return isNaN(d.getTime()) ? "" : d.toLocaleString();
-                            } catch {
-                              return "";
-                            }
-                          })()
-                        : "";
-
-                      return (
-                        <tr key={s.id} className="hover:bg-[rgba(30,90,168,.03)] transition">
-                          <td className="px-4 py-3">
-                            <div className="font-black text-[rgba(11,23,53,.88)]">{s.title}</div>
-                            {s.fileName ? (
-                              <div className="text-[11px] text-[rgba(11,23,53,.55)] font-extrabold">
-                                {s.fileName}
-                              </div>
-                            ) : null}
-                            {s.abstract ? (
-                              <div className="mt-1 text-[11px] text-[rgba(11,23,53,.55)] line-clamp-2">
-                                {s.abstract}
-                              </div>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-3 text-[rgba(11,23,53,.70)] font-extrabold">
-                            {s.track}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={badgeClass}>
-                              {String(status).replace("_", " ")}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-[rgba(11,23,53,.62)] font-extrabold">
-                            {submittedLabel}
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    {visibleSubmissions.length === 0 && (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-10 text-center text-[rgba(11,23,53,.62)] font-extrabold">
-                          No submissions yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="px-6 py-4 bg-[rgba(30,90,168,.04)] text-[11px] text-[rgba(11,23,53,.62)] border-t border-[rgba(11,23,53,.08)] font-extrabold">
-                Need approval workflows? You can update submission statuses (accepted/rejected) from an admin screen later.
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MY BUSINESS CARD TAB */}
-      {tab === "business_card" && (
-        <div className="animate-fade-in-up">
-          <EditBusinessCard user={user} onUpdateUser={onUpdateUser} />
-        </div>
-      )}
-
-      {/* REGISTRATION MODAL */}
-      {selectedEvent && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center px-4 py-8 bg-black/60 backdrop-blur-sm"
-          onClick={closeRegisterModal}
-        >
-          <div
-            className={classNames(
-              "relative w-full max-w-5xl rounded-3xl u-card px-6 py-6 sm:px-8 sm:py-7 transform transition-all duration-200",
-              modalVisible
-                ? "opacity-100 scale-100 translate-y-0"
-                : "opacity-0 scale-95 translate-y-2"
-            )}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div className="min-w-0">
-                <p className="text-[11px] text-[rgba(11,23,53,.55)] mb-1 font-extrabold uppercase tracking-widest">
-                  Register for
-                </p>
-                <h3 className="text-xl md:text-2xl text-brand font-black truncate">
-                  {selectedEvent.title}
-                </h3>
-                <p className="text-xs text-[rgba(11,23,53,.62)] mt-1 font-extrabold">
-                  📅 {formatDateRange(selectedEvent.startDate, selectedEvent.endDate)} • 📍{" "}
-                  {selectedEvent.location}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeRegisterModal}
-                className="px-3 py-2 rounded-2xl u-btn-outline border border-[rgba(11,23,53,.14)] hover:opacity-95 transition text-sm font-extrabold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs text-[rgba(11,23,53,.62)] mb-4 font-extrabold">
-              Fill out a few details so the organisers know who&apos;s attending.
-            </p>
-
-            {errorMessage && (
-              <div className="mb-3 rounded-2xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-700 font-extrabold">
-                {errorMessage}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className={labelCls}>Full name</label>
-                <input
-                  name="fullName"
-                  value={formData.fullName}
-                  onChange={handleRegistrationFieldChange}
-                  className={inputCls}
-                  placeholder="Juan Dela Cruz"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className={labelCls}>Email</label>
-                <input
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleRegistrationFieldChange}
-                  className={inputCls}
-                  placeholder="you@email.com"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className={labelCls}>University</label>
-                <input
-                  name="university"
-                  value={formData.university}
-                  onChange={handleRegistrationFieldChange}
-                  className={inputCls}
-                  placeholder="AUP / DLSU / etc."
-                />
-              </div>
-
-              <div>
-                <label className={labelCls}>Contact</label>
-                <input
-                  name="contact"
-                  value={formData.contact}
-                  onChange={handleRegistrationFieldChange}
-                  className={inputCls}
-                  placeholder="+63 9xx xxx xxxx"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className={labelCls}>Notes</label>
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleRegistrationFieldChange}
-                  rows={3}
-                  className={textareaCls}
-                  placeholder="Anything the organisers should know?"
-                />
-              </div>
-
-              <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-[rgba(11,23,53,.62)] font-extrabold">
-                    Participants
-                  </span>
-                  <div className="inline-flex items-center rounded-2xl border border-[rgba(11,23,53,.14)] bg-white overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={decrementParticipants}
-                      className="px-3 py-2 text-sm text-[rgba(11,23,53,.70)] hover:bg-[rgba(30,90,168,.06)] font-extrabold"
-                      disabled={saving}
-                    >
-                      −
-                    </button>
-                    <span className="px-4 py-2 text-sm font-black text-[rgba(11,23,53,.88)]">
-                      {participantsCount}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={incrementParticipants}
-                      className="px-3 py-2 text-sm text-[rgba(11,23,53,.70)] hover:bg-[rgba(30,90,168,.06)] font-extrabold"
-                      disabled={saving}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={closeRegisterModal}
-                    className={classNames(btnOutline, "text-xs px-4 py-2")}
-                    disabled={saving}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className={classNames(btnGold, "text-xs px-5 py-2")}
-                    disabled={saving}
-                  >
-                    {saving ? "Submitting..." : "Confirm registration"}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* CONFIRMATION POP-UP */}
-      {confirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-3xl u-card p-6 text-sm">
-            <h3 className="font-black text-base text-brand mb-2">Confirm registration</h3>
-            <p className="text-xs text-[rgba(11,23,53,.62)] mb-2 font-extrabold">
-              This action will submit your registration for approval by the organisers.
-            </p>
-
-            <div className="mb-4 rounded-2xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-700 font-extrabold">
-              Action is irreversible once submitted.
-            </div>
-
-            {pendingPayload ? (
-              <div className="mb-4 rounded-2xl bg-[rgba(30,90,168,.05)] border border-[rgba(11,23,53,.10)] p-3 text-xs text-[rgba(11,23,53,.78)] font-extrabold">
-                <div className="font-black text-brand">{pendingPayload.event?.title}</div>
-                <div className="text-[rgba(11,23,53,.62)] mt-1">
-                  {pendingPayload.formData?.fullName} • {pendingPayload.formData?.email}
-                </div>
-                <div className="text-[rgba(11,23,53,.62)] mt-1">
-                  Participants: {pendingPayload.formData?.participantsCount || 1}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="flex justify-end gap-2 text-xs">
-              <button
-                type="button"
-                onClick={handleConfirmCancel}
-                className={classNames(btnOutline, "text-xs px-4 py-2")}
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmProceed}
-                className={classNames(btnGold, "text-xs px-5 py-2")}
-                disabled={saving}
-              >
-                {saving ? "Submitting..." : "Proceed"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-window.ParticipantDashboard = ParticipantDashboard;
+  window.ParticipantDashboard = ParticipantDashboard;
+})();
