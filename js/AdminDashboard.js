@@ -1272,17 +1272,33 @@
 
     if (section === "admin-certificate-designer") return (<section className="relative max-w-7xl mx-auto px-4 py-8"><CertificateDesigner onBack={() => setSection("certificates")} /></section>);
 
-    return (
+   return (
       <section className="relative max-w-7xl mx-auto px-4 py-8">
         <div className="grid gap-6 md:grid-cols-[220px,minmax(0,1fr)]">
-          <aside className="rounded-2xl bg-white/95 border border-gray-100 shadow-sm p-4 h-fit sticky top-4">
-            <div className="mb-4"><p className="text-[11px] text-gray-500 mb-1 font-bold uppercase tracking-widest">Admin panel</p><p className="font-display text-lg font-extrabold text-brand truncate">{user.name || "Admin"}</p></div>
-            <nav className="space-y-1 text-xs">
+          
+          {/* UPDATED: Mobile-responsive Sidebar / Swipe Menu */}
+          <aside className="rounded-2xl bg-white border border-gray-100 shadow-sm p-3 md:p-4 relative md:h-fit md:sticky md:top-24 z-20 mb-2 md:mb-0 overflow-hidden">
+            <div className="mb-4 hidden md:block">
+              <p className="text-[11px] text-gray-500 mb-1 font-bold uppercase tracking-widest">Admin panel</p>
+              <p className="font-display text-lg font-extrabold text-brand truncate">{user.name || "Admin"}</p>
+            </div>
+            <nav className="flex flex-row md:flex-col gap-2 overflow-x-auto scrollbar-hide pb-2 md:pb-0 items-center md:items-stretch">
               {[{ id: "dashboard", label: "Dashboard", icon: "📊" }, { id: "accommodation", label: "Accommodation", icon: "🛏️" }, { id: "registrations", label: "Registrations", icon: "📝" }, { id: "ojs", label: "Submissions", icon: "📄" }, { id: "attendance", label: "Attendance", icon: "🎟️" }, { id: "portals", label: "Portals", icon: "🌐" }, { id: "certificates", label: "Certificates", icon: "🏅" }].map((item) => (
-                <button key={item.id} onClick={() => setSection(item.id)} className={classNames("w-full flex items-center gap-2 rounded-xl px-3 py-2 transition-all font-bold", section === item.id ? "bg-brand text-white shadow-md" : "text-gray-600 hover:bg-soft")}><span className="text-base">{item.icon}</span><span>{item.label}</span></button>
+                <button 
+                    key={item.id} 
+                    onClick={() => setSection(item.id)} 
+                    className={classNames(
+                        "shrink-0 md:w-full flex items-center gap-2 rounded-xl px-4 md:px-3 py-2.5 md:py-2 transition-all font-bold whitespace-nowrap text-sm border md:border-transparent", 
+                        section === item.id ? "bg-brand text-white shadow-md border-transparent" : "text-gray-600 hover:bg-soft bg-gray-50 md:bg-transparent border-gray-200"
+                    )}
+                >
+                  <span className="text-base">{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
               ))}
             </nav>
           </aside>
+
           <main className="min-w-0">
             {section === "dashboard" && <DashboardTab events={events} registrations={registrations} onCreateEvent={() => { setEditEventId(null); setEventForm({ title: "", description: "", startDate: "", endDate: "", location: "", featured: false }); setCreateEventOpen(true); }} onExport={handleExport} onEditEvent={(ev) => { setEditEventId(ev.id); setEventForm({ ...ev }); setCreateEventOpen(true); }} onDeleteEvent={handleDeleteEvent} />}
             {section === "accommodation" && <AccommodationTab dorms={dorms} rooms={rooms} registrations={registrations} onAddDorm={handleAddDorm} onDeleteDorm={handleDeleteDorm} onAddRoom={handleAddRoom} onDeleteRoom={handleDeleteRoom} />}
