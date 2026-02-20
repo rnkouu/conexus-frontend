@@ -145,8 +145,8 @@
     if (!reg) return null;
     
     // Construct image URL assuming backend is on port 8000
-const fileUrl = reg.validId ? `https://conexus-backend-production.up.railway.app/${reg.validId}` : null;
-const companions = Array.isArray(reg.companions) ? reg.companions : [];
+    const fileUrl = reg.validId ? `https://conexus-backend-production.up.railway.app/${reg.validId}` : null;
+    const companions = Array.isArray(reg.companions) ? reg.companions : [];
 
     return (
       <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 overflow-y-auto" onClick={onClose}>
@@ -274,8 +274,8 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
     const [modalVisible, setModalVisible] = useState(false);
     const [animateUpcoming, setAnimateUpcoming] = useState(false);
     
-    // --- Paper Submission States ---
-    const [paperForm, setPaperForm] = useState({ title: "", track: "General Research", abstract: "" });
+    // --- Paper Submission States (UPDATED) ---
+    const [paperForm, setPaperForm] = useState({ eventId: "", title: "", track: "General Research", abstract: "" });
     const [paperFile, setPaperFile] = useState(null);
     const [paperFileName, setPaperFileName] = useState("");
     const [paperSaving, setPaperSaving] = useState(false);
@@ -391,16 +391,37 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
       e.preventDefault();
       if (!paperForm.title || !paperFile) { setPaperError("Title and PDF file required."); return; }
       setPaperSaving(true);
-      const localRow = normalizeSubmission({ id: Date.now(), userEmail: user?.email, title: paperForm.title, track: paperForm.track, status: "under_review", fileName: paperFile.name, submittedAt: new Date().toISOString() });
+      setPaperError("");
+      
+      const localRow = normalizeSubmission({ 
+        id: Date.now(), 
+        userEmail: user?.email, 
+        eventId: paperForm.eventId || null,
+        title: paperForm.title, 
+        track: paperForm.track, 
+        status: "under_review", 
+        fileName: paperFile.name, 
+        submittedAt: new Date().toISOString() 
+      });
+
       try {
         if (typeof onSubmitPaper === "function") {
           const result = await onSubmitPaper({ ...paperForm, file: paperFile, user });
           setSubmissions(prev => [normalizeSubmission(result || localRow), ...prev]);
-        } else { setSubmissions(prev => [localRow, ...prev]); }
-        setPaperForm({ title: "", track: "General Research", abstract: "" });
+        } else { 
+          setSubmissions(prev => [localRow, ...prev]); 
+        }
+        setPaperForm({ eventId: "", title: "", track: "General Research", abstract: "" });
         setPaperFileName("");
         setPaperSuccess("Paper submitted successfully!");
-      } catch (err) { setPaperError("Submission failed."); } finally { setPaperSaving(false); }
+        
+        // Clear success message after 4 seconds
+        setTimeout(() => setPaperSuccess(""), 4000);
+      } catch (err) { 
+        setPaperError("Submission failed."); 
+      } finally { 
+        setPaperSaving(false); 
+      }
     };
 
     return (
@@ -431,13 +452,13 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
 
         {/* Tabs / Filters Container */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-          <div className="inline-flex items-center p-1.5 bg-white u-tabs-wrap rounded-2xl shadow-sm">
+          <div className="inline-flex items-center p-1.5 bg-white u-tabs-wrap rounded-2xl shadow-sm overflow-x-auto max-w-full">
             {["upcoming", "my", "submit", "business_card"].map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 className={classNames(
-                  "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300",
+                  "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 whitespace-nowrap",
                   tab === t ? "u-tab-active bg-[var(--u-sky)] text-brand" : "text-gray-500 hover:text-brand"
                 )}
               >
@@ -500,7 +521,7 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
             </div>
           )}
 
-          {/* --- NEW REGISTRATION GRID --- */}
+          {/* --- NEW REGISTRATION GRID WITH SHORTCUT BUTTONS --- */}
           {tab === "my" && (
             <div className="reg-grid animate-fade-in-up">
               {myEvents.length === 0 ? (
@@ -543,17 +564,31 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
                         </div>
                       </div>
 
-                      <div className="mt-auto pt-6 border-t border-gray-50 flex gap-3">
+                      <div className="mt-auto pt-6 border-t border-gray-50 flex gap-2">
                         <button 
                           onClick={() => setPreviewReg(reg)}
-                          className="flex-1 py-3 rounded-xl bg-gray-50 text-gray-600 text-[11px] font-black uppercase tracking-widest hover:bg-gray-100 transition-colors"
+                          className="flex-1 py-3 rounded-xl bg-gray-50 text-gray-600 text-[10px] font-black uppercase tracking-widest hover:bg-gray-100 transition-colors"
                         >
                           Details
                         </button>
+                        
+                        {/* QUICK SUBMIT PAPER SHORTCUT */}
+                        {isApproved && (
+                          <button 
+                            onClick={() => {
+                                setPaperForm(p => ({ ...p, eventId: String(reg.eventId) }));
+                                setTab("submit");
+                            }}
+                            className="flex-1 py-3 rounded-xl border border-brand text-brand text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-colors"
+                          >
+                            Paper
+                          </button>
+                        )}
+
                         {isApproved && (
                           <button 
                             onClick={() => onDownloadInvitation?.(reg)}
-                            className="flex-1 py-3 rounded-xl bg-[var(--u-navy)] text-white text-[11px] font-black uppercase tracking-widest shadow-lg shadow-blue-900/20 hover:opacity-90 transition-opacity"
+                            className="flex-1 py-3 rounded-xl bg-[var(--u-navy)] text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-900/20 hover:opacity-90 transition-opacity"
                           >
                             E-Ticket
                           </button>
@@ -572,20 +607,40 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
                 <div className="u-card p-8 rounded-[2rem]">
                   <h3 className="text-xl font-black text-brand mb-2">Academic Submission</h3>
                   <p className="text-xs text-gray-500 mb-6">Submit your research paper for peer review. Only PDF format is accepted.</p>
+                  
                   <form onSubmit={handlePaperSubmit} className="space-y-4">
+                     {/* --- NEW EVENT SELECTION DROPDOWN --- */}
+                     <div>
+                        <label className="text-[11px] font-black uppercase text-gray-400 mb-1 block">Link to Event</label>
+                        <select 
+                           className="u-input-academic" 
+                           value={paperForm.eventId} 
+                           onChange={e => setPaperForm(p => ({...p, eventId: e.target.value}))}
+                        >
+                           <option value="">-- Optional: Select Approved Event --</option>
+                           {myEvents.filter(r => r.status === "Approved").map(r => (
+                               <option key={r.eventId} value={r.eventId}>{r.eventTitle}</option>
+                           ))}
+                        </select>
+                     </div>
+
                      <div><label className="text-[11px] font-black uppercase text-gray-400 mb-1 block">Paper Title</label><input className="u-input-academic" value={paperForm.title} onChange={e => setPaperForm(p=>({...p, title: e.target.value}))} placeholder="Full academic title" /></div>
                      <div><label className="text-[11px] font-black uppercase text-gray-400 mb-1 block">Research Track</label><select className="u-input-academic" value={paperForm.track} onChange={e => setPaperForm(p=>({...p, track: e.target.value}))}><option>General Research</option><option>AI / Data Science</option><option>Education</option></select></div>
                      <div><label className="text-[11px] font-black uppercase text-gray-400 mb-1 block">Abstract</label><textarea rows={4} className="u-input-academic" value={paperForm.abstract} onChange={e => setPaperForm(p=>({...p, abstract: e.target.value}))} placeholder="Brief summary of your work..." /></div>
                      <div className="relative">
-                        <label className="u-input-academic border-dashed py-8 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50">
+                        <label className="u-input-academic border-dashed py-8 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
                           <input type="file" accept=".pdf" className="hidden" onChange={e => {setPaperFile(e.target.files[0]); setPaperFileName(e.target.files[0]?.name);}} />
-                          <span className="text-blue-600 font-black text-sm">{paperFileName || "Select PDF Manuscript"}</span>
+                          <span className="text-blue-600 font-black text-sm text-center px-4">{paperFileName || "Select PDF"}</span>
                           <span className="text-[10px] text-gray-400 uppercase mt-1">Click to browse</span>
                         </label>
                      </div>
-                     <button type="submit" disabled={paperSaving} className="grad-btn w-full py-3 rounded-xl text-white font-extrabold u-sweep relative overflow-hidden">
-                       {paperSaving ? "Processing..." : "Submit Manuscript"}
+                     
+                     {/* FIXED BUTTON TEXT */}
+                     <button type="submit" disabled={paperSaving} className="grad-btn w-full py-3 rounded-xl text-white font-extrabold u-sweep relative overflow-hidden mt-4">
+                       {paperSaving ? "Processing..." : "Submit Paper"}
                      </button>
+
+                     {paperError && <p className="text-red-500 text-xs font-bold text-center mt-2">{paperError}</p>}
                      {paperSuccess && <p className="text-emerald-600 text-xs font-bold text-center mt-2">{paperSuccess}</p>}
                   </form>
                 </div>
@@ -594,7 +649,7 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
                  <div className="u-card rounded-[2rem] overflow-hidden">
                     <div className="p-6 bg-gray-50/50 border-b border-gray-100 flex justify-between items-center">
                       <h3 className="font-extrabold text-brand">Submission History</h3>
-                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest text-gray-400 focus:ring-0">
+                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest text-gray-400 focus:ring-0 cursor-pointer">
                         <option value="all">All Records</option>
                         <option value="under_review">Reviewing</option>
                         <option value="accepted">Accepted</option>
@@ -610,21 +665,27 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {visibleSubmissions.map(s => (
-                            <tr key={s.id} className="hover:bg-gray-50/50 transition-colors">
-                              <td className="px-6 py-5">
-                                <p className="font-extrabold text-brand">{s.title}</p>
-                                <p className="text-[10px] text-gray-400 font-bold">{s.fileName}</p>
-                              </td>
-                              <td className="px-6 py-5 text-xs font-bold text-gray-500">{s.track}</td>
-                              <td className="px-6 py-5">
-                                <span className="flex items-center text-xs font-black text-brand capitalize">
-                                  <span className={classNames("status-dot", `bg-${s.status}`)} />
-                                  {s.status?.replace('_', ' ')}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
+                          {visibleSubmissions.length === 0 ? (
+                              <tr>
+                                  <td colSpan="3" className="px-6 py-10 text-center text-sm text-gray-400 italic">No submissions found.</td>
+                              </tr>
+                          ) : (
+                              visibleSubmissions.map(s => (
+                                <tr key={s.id} className="hover:bg-gray-50/50 transition-colors">
+                                  <td className="px-6 py-5">
+                                    <p className="font-extrabold text-brand max-w-sm truncate" title={s.title}>{s.title}</p>
+                                    <p className="text-[10px] text-gray-400 font-bold mt-0.5">{s.fileName}</p>
+                                  </td>
+                                  <td className="px-6 py-5 text-xs font-bold text-gray-500">{s.track}</td>
+                                  <td className="px-6 py-5">
+                                    <span className="flex items-center text-xs font-black text-brand capitalize">
+                                      <span className={classNames("status-dot", `bg-${s.status}`)} />
+                                      {s.status?.replace('_', ' ')}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -638,7 +699,7 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
               {/* Check if EditBusinessCard is defined globally or pass fallback */}
               {typeof EditBusinessCard !== 'undefined' ? 
                 <EditBusinessCard user={user} onUpdateUser={onUpdateUser} /> 
-                : <p className="text-center p-10 text-gray-400">Business Card Component Loading...</p>
+                : <p className="text-center p-10 text-gray-400 font-bold">Business Card Component Loading...</p>
               }
             </div>
           )}
@@ -667,7 +728,7 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
                           <input 
                               type="file" 
                               accept="image/*,application/pdf"
-                              className="u-input-academic bg-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                              className="u-input-academic bg-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
                               onChange={(e) => setSelectedFile(e.target.files[0])}
                               required 
                           />
@@ -685,7 +746,7 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
                           </div>
                       </div>
                       <div className="flex gap-2">
-                          <button type="button" onClick={() => setSelectedEvent(null)} className="px-5 py-2 text-xs font-extrabold text-gray-500">Cancel</button>
+                          <button type="button" onClick={() => setSelectedEvent(null)} className="px-5 py-2 text-xs font-extrabold text-gray-500 hover:text-gray-700">Cancel</button>
                           <button type="submit" className="grad-btn px-6 py-2.5 rounded-xl text-white text-xs font-extrabold u-sweep relative overflow-hidden">Proceed</button>
                       </div>
                     </div>
@@ -747,12 +808,12 @@ const companions = Array.isArray(reg.companions) ? reg.companions : [];
         {/* Confirmation Modal */}
         {confirmOpen && (
           <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-            <div className="u-card rounded-[2rem] p-8 max-w-sm w-full text-center">
+            <div className="u-card rounded-[2rem] p-8 max-w-sm w-full text-center animate-fade-in-up">
               <h3 className="text-xl font-black text-brand mb-2">Final Step</h3>
-              <p className="text-sm text-gray-500 mb-6 leading-relaxed">Confirming will submit your details to the organizers for approval. Action is irreversible.</p>
+              <p className="text-sm text-gray-500 mb-6 leading-relaxed">Confirming will submit your details and ID to the organizers for approval.</p>
               <div className="flex gap-3">
-                <button onClick={() => setConfirmOpen(false)} className="flex-1 py-3 rounded-xl bg-gray-100 font-extrabold text-gray-600 text-sm">Review</button>
-                <button onClick={handleFinalRegistration} className="flex-1 py-3 rounded-xl grad-btn text-white font-extrabold text-sm u-sweep relative overflow-hidden">
+                <button onClick={() => setConfirmOpen(false)} className="flex-1 py-3 rounded-xl bg-gray-100 font-extrabold text-gray-600 text-sm hover:bg-gray-200 transition-colors">Review</button>
+                <button onClick={handleFinalRegistration} disabled={saving} className="flex-1 py-3 rounded-xl grad-btn text-white font-extrabold text-sm u-sweep relative overflow-hidden disabled:opacity-70">
                   {saving ? "Processing..." : "Confirm"}
                 </button>
               </div>
