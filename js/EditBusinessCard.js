@@ -141,9 +141,13 @@ function EditBusinessCard({ user, onUpdateUser }) {
     e.preventDefault();
     setIsSaving(true);
     try {
+        const token = localStorage.getItem('conexus_token'); // SECURED: Get token
         const response = await fetch('https://conexus-backend-production.up.railway.app/api/users/profile', {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` // SECURED: Attach token
+            },
             body: JSON.stringify({ 
                 email: user.email, 
                 ...formData 
@@ -153,6 +157,8 @@ function EditBusinessCard({ user, onUpdateUser }) {
         if (data.success) {
             alert("Institutional profile updated!");
             if (onUpdateUser) onUpdateUser({ ...user, ...formData });
+        } else {
+            alert(data.message || "Failed to update profile.");
         }
     } catch (error) {
         alert("Error saving card.");

@@ -18,6 +18,15 @@
   // Your Local OJS Dashboard URL
   const OJS_DASHBOARD_URL = "http://localhost:8080/index.php/crj/dashboard/editorial#submissions";
 
+  // Helper to fetch auth token
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('conexus_token');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
+  };
+
   // ==========================================
   // UTILITIES & HELPERS
   // ==========================================
@@ -437,12 +446,12 @@
   }
 
   // --- OJS SUBMISSIONS TAB ---
-  const SubmissionsTab = ({ API_BASE, OJS_DASHBOARD_URL }) => {
+  const SubmissionsTab = ({ API_BASE, OJS_DASHBOARD_URL, getAuthHeaders }) => {
     const [submissions, setSubmissions] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const fetchSubmissions = () => {
-        fetch(`${API_BASE}/submissions`)
+        fetch(`${API_BASE}/submissions`, { headers: getAuthHeaders() }) // SECURED
             .then(r => r.json())
             .then(data => {
                 setSubmissions(data);
@@ -1071,11 +1080,11 @@
     const loadData = () => {
       Promise.all([
         fetch(`${API_BASE}/events`).then(r => r.json()).catch(() => []),
-        fetch(`${API_BASE}/registrations`).then(r => r.json()).catch(() => []),
-        fetch(`${API_BASE}/portals`).then(r => r.json()).catch(() => []),
-        fetch(`${API_BASE}/dorms`).then(r => r.json()).catch(() => []),
-        fetch(`${API_BASE}/rooms`).then(r => r.json()).catch(() => []),
-        fetch(`${API_BASE}/attendance_logs`).then(r => r.json()).catch(() => [])
+        fetch(`${API_BASE}/registrations`, { headers: getAuthHeaders() }).then(r => r.json()).catch(() => []), // SECURED
+        fetch(`${API_BASE}/portals`, { headers: getAuthHeaders() }).then(r => r.json()).catch(() => []), // SECURED
+        fetch(`${API_BASE}/dorms`, { headers: getAuthHeaders() }).then(r => r.json()).catch(() => []), // SECURED
+        fetch(`${API_BASE}/rooms`, { headers: getAuthHeaders() }).then(r => r.json()).catch(() => []), // SECURED
+        fetch(`${API_BASE}/attendance_logs`, { headers: getAuthHeaders() }).then(r => r.json()).catch(() => []) // SECURED
       ]).then(([ev, reg, por, dor, roo, lgs]) => {
         if (Array.isArray(ev)) setEvents(ev.map(normalizeEvent));
         if (Array.isArray(reg)) setRegistrations(reg.map(normalizeRegistration));
@@ -1093,7 +1102,7 @@
         if (section === "attendance") {
             // 1. Immediate fetch so you don't wait 3 seconds for the first load
             const fetchLogs = () => {
-                fetch(`${API_BASE}/attendance_logs`)
+                fetch(`${API_BASE}/attendance_logs`, { headers: getAuthHeaders() }) // SECURED
                     .then(r => r.json())
                     .then(data => setLogs(data))
                     .catch(console.error);
@@ -1125,7 +1134,7 @@
 
         const res = await fetch(url, {
             method: method,
-            headers: { "Content-Type": "application/json" },
+            headers: getAuthHeaders(), // SECURED
             body: JSON.stringify(eventForm)
         });
         
@@ -1144,8 +1153,7 @@
             
             // 2. Send request
             try {
-                await fetch(`${API_BASE}/delete_event/${id}`, { method: 'DELETE' });
-                // No need to loadData if successful, UI is already correct
+                await fetch(`${API_BASE}/delete_event/${id}`, { method: 'DELETE', headers: getAuthHeaders() }); // SECURED
             } catch (e) {
                 // 3. Revert if failed
                 loadData(); 
@@ -1162,7 +1170,7 @@
 
       await fetch(`${API_BASE}/registrations/${id}`, { 
           method: 'PUT', 
-          headers: { 'Content-Type': 'application/json' }, 
+          headers: getAuthHeaders(), // SECURED
           body: JSON.stringify(payload) 
       });
       loadData();
@@ -1181,7 +1189,7 @@
         if (confirm("Delete?")) { 
             setRegistrations(prev => prev.filter(r => r.id !== id));
             try {
-                await fetch(`${API_BASE}/registrations/${id}`, { method: 'DELETE' });
+                await fetch(`${API_BASE}/registrations/${id}`, { method: 'DELETE', headers: getAuthHeaders() }); // SECURED
             } catch (e) {
                 loadData();
             }
@@ -1189,64 +1197,67 @@
     };
 
     const handleNfcSubmit = async (scannedId) => {
-  // 1. Optimistic Update: Update the local UI immediately
-  setRegistrations(prev => prev.map(r => 
-    r.id === nfcTargetReg.id ? { ...r, nfc_card_id: scannedId } : r
-  ));
+      // 1. Optimistic Update
+      setRegistrations(prev => prev.map(r => 
+        r.id === nfcTargetReg.id ? { ...r, nfc_card_id: scannedId } : r
+      ));
+      setNfcModalOpen(false);
 
-  // 2. Close modal immediately for a snappy feel
-  setNfcModalOpen(false);
+      try {
+        const res = await fetch(`${API_BASE}/registrations/${nfcTargetReg.id}/assign-nfc`, {
+          method: 'PUT',
+          headers: getAuthHeaders(), // SECURED
+          body: JSON.stringify({ nfc_card_id: scannedId })
+        });
+        
+        const data = await res.json();
+        if (!data.success) {
+          alert(data.message || "Failed to link card");
+          loadData(); 
+        }
+      } catch (err) {
+        alert("Server error linking card");
+        loadData();
+      }
+    };
 
-  try {
-    const res = await fetch(`${API_BASE}/registrations/${nfcTargetReg.id}/assign-nfc`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nfc_card_id: scannedId })
-    });
-    
-    const data = await res.json();
-    if (!data.success) {
-      // 3. Rollback if the server actually failed (e.g., duplicate card)
-      alert(data.message || "Failed to link card");
-      loadData(); 
-    }
-  } catch (err) {
-    alert("Server error linking card");
-    loadData(); // Sync back to real data
-  }
-};
-
-    const handleAddDorm = async (name, type) => { await fetch(`${API_BASE}/dorms`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, type }) }); loadData(); };
+    const handleAddDorm = async (name, type) => { 
+        await fetch(`${API_BASE}/dorms`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ name, type }) }); // SECURED
+        loadData(); 
+    };
     
     // --- OPTIMISTIC DELETE DORM ---
     const handleDeleteDorm = async (id) => { 
         if (confirm("Delete location?")) { 
             setDorms(prev => prev.filter(d => d.id !== id));
             try {
-                await fetch(`${API_BASE}/dorms/${id}`, { method: 'DELETE' });
+                await fetch(`${API_BASE}/dorms/${id}`, { method: 'DELETE', headers: getAuthHeaders() }); // SECURED
             } catch(e) { loadData(); }
         } 
     };
 
-    const handleAddRoom = async (form) => { await fetch(`${API_BASE}/rooms`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }); loadData(); };
+    const handleAddRoom = async (form) => { 
+        await fetch(`${API_BASE}/rooms`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(form) }); // SECURED
+        loadData(); 
+    };
     
     // --- OPTIMISTIC DELETE ROOM ---
     const handleDeleteRoom = async (id) => { 
         if (confirm("Delete room?")) { 
             setRooms(prev => prev.filter(r => r.id !== id));
             try {
-                await fetch(`${API_BASE}/rooms/${id}`, { method: 'DELETE' });
+                await fetch(`${API_BASE}/rooms/${id}`, { method: 'DELETE', headers: getAuthHeaders() }); // SECURED
             } catch(e) { loadData(); }
         } 
     };
 
     const handleCreatePortal = async (form) => { 
-        // OPTIMISTIC CREATE (Since we generate ID on client)
+        // OPTIMISTIC CREATE
         const newPortal = { id: makeUUID(), ...form, createdAt: new Date().toISOString() };
         setPortals(prev => [newPortal, ...prev]);
         
         try {
-            await fetch(`${API_BASE}/portals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newPortal) }); 
+            await fetch(`${API_BASE}/portals`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(newPortal) }); // SECURED
         } catch (e) {
             loadData(); // Revert
         }
@@ -1258,7 +1269,7 @@
         if (confirm("Delete?")) { 
             setPortals(prev => prev.filter(p => p.id !== id));
             try {
-                await fetch(`${API_BASE}/portals/${id}`, { method: 'DELETE' });
+                await fetch(`${API_BASE}/portals/${id}`, { method: 'DELETE', headers: getAuthHeaders() }); // SECURED
             } catch(e) { loadData(); }
         } 
     };
@@ -1307,7 +1318,7 @@
                     onDelete={handleDeleteRegistration} 
                 />
             }
-            {section === "ojs" && <SubmissionsTab API_BASE={API_BASE} OJS_DASHBOARD_URL={OJS_DASHBOARD_URL} />}
+            {section === "ojs" && <SubmissionsTab API_BASE={API_BASE} OJS_DASHBOARD_URL={OJS_DASHBOARD_URL} getAuthHeaders={getAuthHeaders} />}
             {section === "attendance" && <AttendanceTab logs={logs} />}
             {section === "portals" && <PortalsTab portals={portals} events={events} onCreatePortal={handleCreatePortal} onDeletePortal={handleDeletePortal} />}
             {section === "certificates" && <CertificatesTab events={events} registrations={registrations} onIssueCert={(r) => { setCertTarget(r); setCertDrawerOpen(true); }} batchStatus={batchStatus} onBatchEmail={handleBatchEmail} onOpenDesigner={() => setSection("admin-certificate-designer")} />}

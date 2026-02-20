@@ -362,8 +362,14 @@
           if (selectedFile) payload.append('valid_id', selectedFile); 
           payload.append('companions', JSON.stringify(companions)); 
 
+          // 1. GET THE TOKEN
+          const token = localStorage.getItem('conexus_token'); 
+
           const response = await fetch('https://conexus-backend-production.up.railway.app/api/register', {
               method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${token}` // 2. ATTACH THE TOKEN
+              },
               body: payload, 
           });
           

@@ -1014,18 +1014,27 @@ async function loadRegistrations() {
   const handleCreateSubmission = async ({ title, track, abstract, file, eventId = null }) => {
     if (!user) return alert("Login first.");
     if (!file) return alert("Please attach a PDF file.");
+    
     const formData = new FormData();
     formData.append("user_email", user.email);
     formData.append("event_id", eventId || "");
     formData.append("title", title);
     formData.append("abstract", abstract);
     formData.append("file", file); 
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/submissions`, { method: 'POST', body: formData });
+      const token = localStorage.getItem('conexus_token'); // Get the badge
+      const response = await fetch(`${API_BASE_URL}/submissions`, { 
+          method: 'POST', 
+          headers: {
+              'Authorization': `Bearer ${token}` // Show the badge
+          },
+          body: formData 
+      });
       const res = await response.json();
       if (res.success) {
         setSubmissions(p => [{ id: res.id, userEmail: user.email, eventId, title, track, abstract, fileName: file.name, status: "under_review" }, ...p]);
-        alert("Paper submitted and sent to OJS!");
+        return res;
       } else { alert("Submission failed: " + res.message); }
     } catch (err) { alert("Submission error."); }
   };
