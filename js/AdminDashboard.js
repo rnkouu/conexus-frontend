@@ -669,12 +669,11 @@
     );
   };
 
-  const RegistrationsTab = ({ events, registrations, rooms, dorms, onUpdateStatus, onAssign, onNfc, onPreview, onCert, onDelete, onRevoke }) => {
+ const RegistrationsTab = ({ events, registrations, rooms, dorms, onUpdateStatus, onAssign, onNfc, onPreview, onCert, onDelete, onRevoke }) => {
     const [filterEvent, setFilterEvent] = useState("all");
     const [filterStatus, setFilterStatus] = useState("all");
     const filtered = registrations.filter(r => (filterEvent === "all" || String(r.eventId) === filterEvent) && (filterStatus === "all" || r.status === filterStatus));
     
-    // --- ADD THIS FUNCTION HERE ---
     const handleWriteNFC = async (participant) => {
         if (!('NDEFReader' in window)) {
             alert('⚠️ Web NFC is not supported on this device. Please use Google Chrome on an Android phone or tablet.');
@@ -705,12 +704,12 @@
             <h2 className="font-display text-2xl font-bold text-gray-900">Registrations</h2>
             <p className="text-sm text-gray-500 mt-1">Manage attendee approvals, assignments, and check-in details.</p>
           </div>
-          <div className="flex items-center gap-3">
-            <select value={filterEvent} onChange={e => setFilterEvent(e.target.value)} className="text-xs font-semibold rounded-xl border border-gray-200 px-4 py-2.5 bg-white text-gray-600 focus:border-brand outline-none shadow-sm hover:border-gray-300 transition-colors">
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <select value={filterEvent} onChange={e => setFilterEvent(e.target.value)} className="flex-1 md:flex-none text-xs font-semibold rounded-xl border border-gray-200 px-4 py-2.5 bg-white text-gray-600 focus:border-brand outline-none shadow-sm hover:border-gray-300 transition-colors">
                 <option value="all">All Events</option>
                 {events.map(e => <option key={e.id} value={String(e.id)}>{e.title}</option>)}
             </select>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs font-semibold rounded-xl border border-gray-200 px-4 py-2.5 bg-white text-gray-600 focus:border-brand outline-none shadow-sm hover:border-gray-300 transition-colors">
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="flex-1 md:flex-none text-xs font-semibold rounded-xl border border-gray-200 px-4 py-2.5 bg-white text-gray-600 focus:border-brand outline-none shadow-sm hover:border-gray-300 transition-colors">
                 <option value="all">All Statuses</option>
                 <option>For approval</option>
                 <option>Approved</option>
@@ -719,25 +718,24 @@
           </div>
         </div>
 
-        
-
-        {/* Main Table */}
+        {/* Main Table Container (MOBILE FRIENDLY SCROLL) */}
         <div className="rounded-3xl bg-white border border-gray-100 shadow-xl shadow-gray-200/40 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto w-full scrollbar-hide">
+            {/* Added min-w-[1050px] so it never squishes columns on small screens */}
+            <table className="w-full text-left border-collapse min-w-[1050px]">
               <thead>
-                <tr className="bg-gray-50/80 border-b border-gray-100 text-[11px] uppercase font-extrabold text-gray-400 tracking-wider">
-                    <th className="px-8 py-5">Participant Details</th>
-                    <th className="px-6 py-5">Status</th>
-                    <th className="px-6 py-5">Accommodation</th>
-                    <th className="px-6 py-5">NFC Identity</th>
-                    <th className="px-8 py-5 text-right">Actions</th>
+                <tr className="bg-gray-50/80 border-b border-gray-100 text-[10px] uppercase font-extrabold text-gray-400 tracking-wider">
+                    <th className="px-6 py-4">Participant Details</th>
+                    <th className="px-4 py-4">Status</th>
+                    <th className="px-4 py-4">Accommodation</th>
+                    <th className="px-4 py-4">NFC Identity</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.length === 0 ? (
                     <tr>
-                        <td colSpan="5" className="px-8 py-12 text-center text-gray-400 text-sm italic">
+                        <td colSpan="5" className="px-6 py-12 text-center text-gray-400 text-sm italic">
                             No registrations found matching your filters.
                         </td>
                     </tr>
@@ -748,31 +746,31 @@
                   const assignedPlace = assignedRoom ? dorms.find(d => String(d.id) === String(assignedRoom.dormId)) : null;
                   
                   return (
-                    <tr key={r.id} className="group hover:bg-blue-50/30 transition-all duration-200">
+                    <tr key={r.id} className="group hover:bg-blue-50/40 transition-all duration-200">
                       
                       {/* 1. Participant Info */}
-                      <td className="px-8 py-5 align-middle">
+                      <td className="px-6 py-4 align-middle">
                         <div className="flex flex-col">
                             <span className="text-sm font-bold text-gray-900 group-hover:text-brand transition-colors">{r.fullName}</span>
                             <span className="text-xs text-gray-500 mt-0.5">{r.userEmail}</span>
-                            <span className="text-[10px] text-gray-400 mt-1 font-medium bg-gray-100 px-2 py-0.5 rounded-md w-fit">{r.eventTitle}</span>
+                            <span className="text-[10px] text-brand bg-blue-50 border border-blue-100 mt-1.5 px-2 py-0.5 rounded-md w-fit font-semibold">{r.eventTitle}</span>
                         </div>
                       </td>
 
                       {/* 2. Status Badge */}
-                      <td className="px-6 py-5 align-middle">
+                      <td className="px-4 py-4 align-middle">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border ${
-                            isApproved ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
-                            isRejected ? 'bg-red-50 text-red-600 border-red-100' : 
-                            'bg-gray-50 text-gray-600 border-gray-200'
+                            isApproved ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 
+                            isRejected ? 'bg-red-50 text-red-600 border-red-200' : 
+                            'bg-amber-50 text-amber-600 border-amber-200' /* Changed For Approval to amber */
                         }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full mr-2 ${isApproved ? 'bg-emerald-500' : isRejected ? 'bg-red-500' : 'bg-gray-400'}`}></span>
+                            <span className={`w-1.5 h-1.5 rounded-full mr-2 ${isApproved ? 'bg-emerald-500' : isRejected ? 'bg-red-500' : 'bg-amber-500'}`}></span>
                             {r.status}
                         </span>
                       </td>
                       
                       {/* 3. Accommodation Assignment */}
-                      <td className="px-6 py-5 align-middle">
+                      <td className="px-4 py-4 align-middle">
                         {assignedRoom ? (
                           <button 
                             onClick={() => onAssign(r)} 
@@ -780,7 +778,7 @@
                             title="Click to change assignment"
                           >
                              <span className="text-lg leading-none">🛏️</span>
-                             <div className="text-left">
+                             <div className="text-left whitespace-nowrap">
                                 <div className="text-xs font-bold text-gray-700 group-hover/btn:text-brand">
                                     {assignedPlace?.name || '...'} <span className="text-gray-400 mx-1">•</span> {assignedRoom.name}
                                 </div>
@@ -789,7 +787,7 @@
                         ) : (
                           <button 
                             onClick={() => onAssign(r)} 
-                            className="px-3 py-1.5 rounded-lg border border-dashed border-gray-300 text-xs font-bold text-gray-400 hover:text-brand hover:border-brand hover:bg-blue-50 transition-all flex items-center gap-2"
+                            className="px-3 py-1.5 rounded-lg border border-dashed border-gray-300 text-xs font-bold text-gray-400 hover:text-brand hover:border-brand hover:bg-blue-50 transition-all flex items-center gap-2 whitespace-nowrap"
                           >
                             <span>+</span> Assign Room
                           </button>
@@ -797,48 +795,52 @@
                       </td>
 
                       {/* 4. NFC Column */}
-                      <td className="px-6 py-5 align-middle">
+                      <td className="px-4 py-4 align-middle">
                         {r.nfc_card_id ? (
                           <button 
                             onClick={() => onNfc(r)} 
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 hover:border-brand hover:shadow-sm group/nfc transition-all"
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 hover:border-brand hover:shadow-sm group/nfc transition-all whitespace-nowrap"
                           >
                             <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
                             <span className="font-mono text-xs font-bold text-gray-600 group-hover/nfc:text-brand">{r.nfc_card_id}</span>
                           </button>
                         ) : (
-                          <button onClick={() => onNfc(r)} className="text-xs font-bold text-gray-400 hover:text-brand underline decoration-dotted underline-offset-2 transition-colors">
-                            Link Card
+                          <button onClick={() => onNfc(r)} className="px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-xs font-bold text-gray-500 hover:text-brand hover:border-brand hover:bg-blue-50 transition-all whitespace-nowrap flex items-center gap-2">
+                            <span>🔗</span> Link Card
                           </button>
                         )}
                       </td>
 
-                      {/* 5. Actions */}
-                      <td className="px-8 py-5 align-middle text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button 
+                      {/* 5. Actions (FIXED BUTTON ALIGNMENT) */}
+                      <td className="px-6 py-4 align-middle text-right">
+                          <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                              
+                              {/* 📳 FIXED: Added Icon back to the button */}
+                              <button 
                                   onClick={() => handleWriteNFC(r)}
-                                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 text-blue-600 border border-blue-100 hover:bg-brand hover:text-white transition-all shadow-sm"
                                   title="Write to physical NFC Card (Android Only)"
-                              ></button>
-                              <button onClick={() => onPreview(r)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100 border border-transparent hover:border-gray-200 transition-all">
+                              >
+                                  📳
+                              </button>
+
+                              <button onClick={() => onPreview(r)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-all">
                                 Preview
                               </button>
                               
-                              {/* ADDED REJECT BUTTON HERE FOR 'FOR APPROVAL' STATUS */}
                               {!isApproved && !isRejected && (
                                   <>
-                                      <button onClick={() => onUpdateStatus(r.id, "Approved", r.roomId)} className="px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-200 hover:bg-emerald-600 hover:shadow-lg hover:-translate-y-0.5 transition-all">
+                                      <button onClick={() => onUpdateStatus(r.id, "Approved", r.roomId)} className="px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold shadow-sm hover:bg-emerald-600 hover:-translate-y-0.5 transition-all">
                                         Approve
                                       </button>
-                                      <button onClick={() => onRevoke(r)} className="px-4 py-1.5 rounded-lg bg-red-500 text-white text-xs font-bold shadow-md shadow-red-200 hover:bg-red-600 hover:shadow-lg hover:-translate-y-0.5 transition-all">
+                                      <button onClick={() => onRevoke(r)} className="px-4 py-1.5 rounded-lg bg-red-500 text-white text-xs font-bold shadow-sm hover:bg-red-600 hover:-translate-y-0.5 transition-all">
                                         Reject
                                       </button>
                                   </>
                               )}
 
                               {isApproved && (
-                                  <button onClick={() => onRevoke(r)} className="px-4 py-1.5 rounded-lg bg-amber-400 text-white text-xs font-bold shadow-md shadow-amber-100 hover:bg-amber-500 hover:shadow-lg hover:-translate-y-0.5 transition-all">
+                                  <button onClick={() => onRevoke(r)} className="px-4 py-1.5 rounded-lg bg-amber-400 text-white text-xs font-bold shadow-sm hover:bg-amber-500 hover:-translate-y-0.5 transition-all">
                                     Revoke
                                   </button>
                               )}
