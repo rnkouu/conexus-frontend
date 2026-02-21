@@ -102,12 +102,17 @@ const verifyAdmin = (req, res, next) => {
 
 app.post('/api/register_user', (req, res) => {
     const { name, email, password, university } = req.body;
+    
+    // Create a slug from the name (e.g., "John Doe" -> "john-doe-12345")
+    const slug = name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.floor(1000 + Math.random() * 9000);
+
     db.query("SELECT id FROM users WHERE email = ?", [email], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         if (results.length > 0) return res.json({ success: false, message: 'Email taken' });
 
-        db.query("INSERT INTO users (full_name, email, password, university_org, role) VALUES (?, ?, ?, ?, 'participant')", 
-        [name, email, password, university], (err, result) => {
+        // Added profile_slug to the columns and values
+        db.query("INSERT INTO users (full_name, email, password, university_org, role, profile_slug) VALUES (?, ?, ?, ?, 'participant', ?)", 
+        [name, email, password, university, slug], (err, result) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ success: true, userId: result.insertId });
         });
