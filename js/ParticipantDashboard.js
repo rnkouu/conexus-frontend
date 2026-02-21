@@ -596,7 +596,7 @@
                             onClick={() => onDownloadInvitation?.(reg)}
                             className="flex-1 py-3 rounded-xl bg-[var(--u-navy)] text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-900/20 hover:opacity-90 transition-opacity"
                           >
-                            E-Ticket
+                            Invitation
                           </button>
                         )}
                       </div>
