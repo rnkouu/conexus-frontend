@@ -912,8 +912,9 @@ function App() {
           startDate: r.start_date, 
           endDate: r.end_date,
           status: r.status,
+          roomId: r.room_id, // <--- THIS IS THE FIX. Now the room ID passes through.
           companions: r.companions || [],
-          validId: r.valid_id_path // <--- ADD THIS LINE HERE
+          validId: r.valid_id_path 
         })));
       }
     } catch (err) { console.error(err); }
