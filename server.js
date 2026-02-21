@@ -302,18 +302,62 @@ app.get('/api/submissions', verifyToken, (req, res) => {
     });
 });
 
+// ==========================================
+// UPDATE USER PROFILE (Digital Business Card)
+// ==========================================
 app.put('/api/users/profile', verifyToken, (req, res) => {
-    const { email, name, job_title, designation, university_org, phone, bio, skills, linkedin_url, facebook_url, twitter_url } = req.body;
+    const { 
+        email, 
+        name, 
+        job_title, 
+        designation, 
+        university_org, 
+        phone, 
+        bio, 
+        linkedin_url, 
+        facebook_url, 
+        twitter_url 
+    } = req.body;
     
     // Security check: Only let them update their own profile unless they are an admin
     if (req.user.email !== email && req.user.role !== 'admin') {
         return res.status(403).json({ success: false, message: 'Unauthorized profile update' });
     }
 
-    const query = `UPDATE users SET full_name=?, job_title=?, designation=?, university_org=?, phone=?, bio=?, skills=?, linkedin_url=?, facebook_url=?, twitter_url=? WHERE email=?`;
-    db.query(query, [name, job_title, designation, university_org, phone, bio, skills, linkedin_url, facebook_url, twitter_url, email], (err) => {
-        if (err) return res.status(500).json({ success: false });
-        res.json({ success: true });
+    const query = `
+        UPDATE users 
+        SET 
+            full_name = ?, 
+            job_title = ?, 
+            designation = ?, 
+            university_org = ?, 
+            phone = ?, 
+            bio = ?, 
+            linkedin_url = ?, 
+            facebook_url = ?, 
+            twitter_url = ? 
+        WHERE email = ?
+    `;
+    
+    const values = [
+        name || null, 
+        job_title || null, 
+        designation || null, 
+        university_org || null, 
+        phone || null, 
+        bio || null, 
+        linkedin_url || null, 
+        facebook_url || null, 
+        twitter_url || null, 
+        email
+    ];
+
+    db.query(query, values, (err, result) => {
+        if (err) {
+            console.error("Error updating profile:", err);
+            return res.status(500).json({ success: false, message: 'Database error saving profile' });
+        }
+        res.json({ success: true, message: 'Profile updated successfully' });
     });
 });
 
