@@ -669,7 +669,7 @@
     );
   };
 
- const RegistrationsTab = ({ events, registrations, rooms, dorms, onUpdateStatus, onAssign, onNfc, onPreview, onCert, onDelete, onRevoke }) => {
+  const RegistrationsTab = ({ events, registrations, rooms, dorms, onUpdateStatus, onAssign, onNfc, onPreview, onCert, onDelete, onRevoke }) => {
     const [filterEvent, setFilterEvent] = useState("all");
     const [filterStatus, setFilterStatus] = useState("all");
     const filtered = registrations.filter(r => (filterEvent === "all" || String(r.eventId) === filterEvent) && (filterStatus === "all" || r.status === filterStatus));
@@ -811,42 +811,66 @@
                         )}
                       </td>
 
-                      {/* 5. Actions (FIXED BUTTON ALIGNMENT) */}
+                      {/* 5. Actions (MODERN PROFESSIONAL UI) */}
                       <td className="px-6 py-4 align-middle text-right">
                           <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                               
-                              {/* 📳 FIXED: Added Icon back to the button */}
+                              {/* NFC Writer - Soft Secondary */}
                               <button 
                                   onClick={() => handleWriteNFC(r)}
-                                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 text-blue-600 border border-blue-100 hover:bg-brand hover:text-white transition-all shadow-sm"
+                                  className="h-8 w-8 flex items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
                                   title="Write to physical NFC Card (Android Only)"
                               >
                                   📳
                               </button>
 
-                              <button onClick={() => onPreview(r)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-all">
+                              {/* Preview - Outline Secondary */}
+                              <button 
+                                  onClick={() => onPreview(r)} 
+                                  className="h-8 px-3 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                              >
                                 Preview
                               </button>
                               
                               {!isApproved && !isRejected && (
                                   <>
-                                      <button onClick={() => onUpdateStatus(r.id, "Approved", r.roomId)} className="px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold shadow-sm hover:bg-emerald-600 hover:-translate-y-0.5 transition-all">
+                                      {/* Approve - Flat Primary Success */}
+                                      <button 
+                                          onClick={() => onUpdateStatus(r.id, "Approved", r.roomId)} 
+                                          className="h-8 px-4 flex items-center justify-center rounded-lg bg-emerald-500 text-white text-xs font-medium hover:bg-emerald-600 transition-colors"
+                                      >
                                         Approve
                                       </button>
-                                      <button onClick={() => onRevoke(r)} className="px-4 py-1.5 rounded-lg bg-red-500 text-white text-xs font-bold shadow-sm hover:bg-red-600 hover:-translate-y-0.5 transition-all">
+
+                                      {/* Reject - Flat Primary Danger */}
+                                      <button 
+                                          onClick={() => onRevoke(r)} 
+                                          className="h-8 px-4 flex items-center justify-center rounded-lg bg-rose-500 text-white text-xs font-medium hover:bg-rose-600 transition-colors"
+                                      >
                                         Reject
                                       </button>
                                   </>
                               )}
 
                               {isApproved && (
-                                  <button onClick={() => onRevoke(r)} className="px-4 py-1.5 rounded-lg bg-amber-400 text-white text-xs font-bold shadow-sm hover:bg-amber-500 hover:-translate-y-0.5 transition-all">
+                                  /* Revoke - Flat Primary Warning */
+                                  <button 
+                                      onClick={() => onRevoke(r)} 
+                                      className="h-8 px-4 flex items-center justify-center rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 transition-colors"
+                                  >
                                     Revoke
                                   </button>
                               )}
                               
-                              <button onClick={() => onDelete(r.id)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all" title="Delete Registration">
-                                🗑️
+                              {/* Delete - Ghost Icon */}
+                              <button 
+                                  onClick={() => onDelete(r.id)} 
+                                  className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors ml-1" 
+                                  title="Delete Registration"
+                              >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
                               </button>
                           </div>
                       </td>
